@@ -67,6 +67,10 @@ assert "%S/sendspin-zones/%i" in unit and "%t/sendspin-zones/%i/control.sock" in
 assert "User=root" not in unit and "Restart=always" in unit and "Type=exec" in unit
 assert "PartOf=sendspin-zones.target pipewire.service wireplumber.service" in unit
 
+for daemon in ["pipewire", "wireplumber"]:
+    dropin = root / f"systemd/{daemon}.service.d/50-direct-restart.conf"
+    assert dropin.read_text() == "[Service]\nRestartMode=direct\n"
+
 for path in root.rglob("*"):
     parts = path.relative_to(root).parts
     if parts[0] in {".git", "local", "backups", "downloads", "build"} or "__pycache__" in parts:

@@ -1,8 +1,8 @@
 """Exercise the real installer in a temporary Linux filesystem, without services/network.
 
 Run: python3 -m unittest discover -s tests -v
-The shell, tar, checksums, install and rename operations are real. Only machine
-identity, package/network commands and systemctl are substituted. Absolute
+The shell, tar, checksums, install and rename operations are real. Machine
+identity/account access, package/network commands and systemctl are substituted. Absolute
 installer paths and the two release checksums are redirected to test fixtures.
 """
 
@@ -38,7 +38,7 @@ PATH_PREFIXES = (
 
 
 FAKE_COMMAND = r'''
-import hashlib, json, os, pathlib, shutil, subprocess, sys
+import hashlib, json, os, pathlib, shutil, signal, stat, subprocess, sys
 name = pathlib.Path(sys.argv[0]).name
 args = sys.argv[1:]
 root = pathlib.Path(os.environ["INSTALL_TEST_ROOT"])
@@ -66,6 +66,17 @@ elif name == "getent":
     assert args == ["passwd", "sendspin-cli"]
     print("sendspin-cli:x:999:999:Test:" + str(root / "var/lib/sendspin-cli")
           + ":/usr/sbin/nologin")
+elif name == "stat":
+    assert args == ["-c", "%u", str(root / "var/lib/sendspin-cli")]
+    print(state.get("home_owner", 999))
+elif name == "runuser":
+    assert args[:4] == ["-u", "sendspin-cli", "--", "test"]
+    assert len(args) == 6 and args[5] == str(root / "var/lib/sendspin-cli")
+    permission = {"-r": stat.S_IRUSR, "-w": stat.S_IWUSR, "-x": stat.S_IXUSR}[args[4]]
+    # Model the mocked account as owner; even a root test runner must respect its bits.
+    if not pathlib.Path(args[5]).stat().st_mode & permission:
+        sys.exit(1)
+    sys.exit(subprocess.run(["/usr/bin/test", *args[4:]]).returncode)
 elif name == "dpkg":
     assert args == ["--print-architecture"]
     print("amd64")
@@ -82,8 +93,12 @@ elif name == "systemctl":
         print(status)
         sys.exit(0 if status in ("enabled", "enabled-runtime") else 1)
     elif args == ["mask", "sendspin-cli.service"]:
+        if state.get("mask_failure", False): sys.exit(1)
         (root / "single-player-masked").touch()
-    elif args != ["daemon-reload"]:
+    elif args == ["daemon-reload"]:
+        if state.get("signal_after_commit", False): os.kill(os.getppid(), signal.SIGTERM)
+        sys.exit(state.get("daemon_reload_exit", 0))
+    else:
         raise AssertionError("Unexpected service mutation: " + repr(args))
 elif name == "curl":
     expected = ["--fail", "--location", "--proto", "=https", "--tlsv1.2",
@@ -122,7 +137,7 @@ class InstallerTests(unittest.TestCase):
         dispatcher = self.fake_bin / "dispatch.py"
         dispatcher.write_text("#!" + sys.executable + "\n" + FAKE_COMMAND)
         dispatcher.chmod(0o755)
-        for name in ("id", "hostname", "getent", "dpkg", "systemd-detect-virt",
+        for name in ("id", "hostname", "getent", "stat", "runuser", "dpkg", "systemd-detect-virt",
                      "apt-get", "systemctl", "curl", "mv"):
             (self.fake_bin / name).symlink_to(dispatcher.name)
         self.state = {}
@@ -145,7 +160,8 @@ class InstallerTests(unittest.TestCase):
                 archive.addfile(info, io.BytesIO(data))
         return output.getvalue()
 
-    def run_installer(self, *, archive=None, expected_archive=None, download=False):
+    def run_installer(self, *, archive=None, expected_archive=None,
+                      expected_binary=BINARY, download=False):
         archive = self.archive if archive is None else archive
         expected_archive = self.archive if expected_archive is None else expected_archive
         source = (ROOT / "scripts/install-official.sh").read_text()
@@ -159,7 +175,7 @@ class InstallerTests(unittest.TestCase):
                             lambda _match: str(self.root / prefix.lstrip("/")), source)
         self.assertIn(f"{PREFIX}/usr/local/bin/sendspin-cli", source)
         source = source.replace(ARCHIVE_SHA, hashlib.sha256(expected_archive).hexdigest())
-        source = source.replace(BINARY_SHA, hashlib.sha256(BINARY).hexdigest())
+        source = source.replace(BINARY_SHA, hashlib.sha256(expected_binary).hexdigest())
         script = self.scripts / "install-official.sh"
         script.write_text(source)
         if download:
@@ -182,11 +198,17 @@ class InstallerTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual(self.destination.read_bytes(), OLD_BINARY)
         self.assertFalse(any(e["command"] == "mv" for e in self.events()))
+        self.assert_staging_removed()
+
+    def assert_staging_removed(self):
+        cache = self.root / "var/cache/sendspin-cli/v0.4.0"
+        self.assertEqual(list(cache.glob("install.*")), [])
+        self.assertEqual(list(self.destination.parent.glob(".sendspin-cli.*")), [])
 
     def assert_no_package_changes(self):
         self.assertFalse(any(e["command"] == "apt-get" for e in self.events()))
 
-    def assert_success(self, result):
+    def assert_success(self, result, *, previous=OLD_BINARY):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual(self.destination.read_bytes(), BINARY)
         self.assertEqual(self.destination.stat().st_mode & 0o777, 0o755)
@@ -194,13 +216,13 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual((cache / "BUILD-INFO.txt").read_bytes(), BUILD_INFO)
         self.assertTrue((self.root / "single-player-masked").exists())
         self.assertFalse((self.root / "usr/local/lib").exists())
-        self.assertEqual(list(cache.glob("install.*")), [])
-        self.assertEqual(list(self.destination.parent.glob(".sendspin-cli.*")), [])
+        self.assert_staging_removed()
         moves = [e for e in self.events() if e["command"] == "mv"]
         self.assertEqual(len(moves), 1)
         self.assertEqual(Path(moves[0]["source"]).parent, self.destination.parent)
         self.assertEqual(Path(moves[0]["destination"]), self.destination)
-        self.assertEqual(moves[0]["old_sha256"], hashlib.sha256(OLD_BINARY).hexdigest())
+        self.assertEqual(moves[0]["old_sha256"],
+                         hashlib.sha256(previous).hexdigest() if previous is not None else None)
         self.assertEqual(moves[0]["source_sha256"], hashlib.sha256(BINARY).hexdigest())
         service_calls = [e["args"] for e in self.events() if e["command"] == "systemctl"]
         self.assertEqual(service_calls, [["is-active", "--quiet", "sendspin-cli.service"],
@@ -233,6 +255,28 @@ class InstallerTests(unittest.TestCase):
         self.assert_unchanged(self.run_installer())
         self.assert_no_package_changes()
 
+    def test_home_owned_by_another_uid_refused_before_packages(self):
+        self.state["home_owner"] = 0
+        self.assert_unchanged(self.run_installer())
+        self.assert_no_package_changes()
+
+    def test_home_not_writable_by_account_refused_before_packages(self):
+        home = self.root / "var/lib/sendspin-cli"
+        home.chmod(0o500)
+        self.addCleanup(home.chmod, 0o755)
+        self.assert_unchanged(self.run_installer())
+        self.assert_no_package_changes()
+
+    def test_symlink_home_refused_before_packages(self):
+        home = self.root / "var/lib/sendspin-cli"
+        home.rmdir()
+        other = self.root / "another-home"
+        other.mkdir()
+        home.symlink_to(other, target_is_directory=True)
+        self.assert_unchanged(self.run_installer())
+        self.assert_no_package_changes()
+        self.assertEqual(list(other.iterdir()), [])
+
     def test_running_cli_refused_before_packages(self):
         process = self.root / "proc/123"
         process.mkdir()
@@ -254,9 +298,69 @@ class InstallerTests(unittest.TestCase):
         self.assert_unchanged(self.run_installer(archive=wrong, expected_archive=wrong))
         self.assertFalse((self.root / "single-player-masked").exists())
 
+    def test_staged_executable_failure_preserves_existing_binary(self):
+        binary = b"#!/bin/sh\nexit 42\n"
+        archive = self.make_archive(binary=binary)
+        self.assert_unchanged(self.run_installer(archive=archive, expected_archive=archive,
+                                               expected_binary=binary))
+        self.assertFalse((self.root / "single-player-masked").exists())
+
+    def test_signal_before_commit_preserves_binary_and_cleans_staging(self):
+        binary = b'#!/bin/sh\nkill -TERM "$PPID"\nexit 0\n'
+        archive = self.make_archive(binary=binary)
+        self.assert_unchanged(self.run_installer(archive=archive, expected_archive=archive,
+                                               expected_binary=binary))
+        self.assertFalse((self.root / "single-player-masked").exists())
+
+    def test_mask_failure_preserves_existing_binary(self):
+        self.state["mask_failure"] = True
+        self.assert_unchanged(self.run_installer())
+
+    def test_directory_destination_refused_without_writes(self):
+        self.destination.unlink()
+        self.destination.mkdir()
+        marker = self.destination / "existing"
+        marker.write_text("keep")
+        result = self.run_installer()
+        self.assertNotEqual(result.returncode, 0)
+        self.assert_no_package_changes()
+        self.assertEqual(list(self.destination.iterdir()), [marker])
+        self.assertEqual(marker.read_text(), "keep")
+
+    def test_symlink_directory_destination_refused_without_redirection(self):
+        self.destination.unlink()
+        other = self.root / "another-binary-directory"
+        other.mkdir()
+        self.destination.symlink_to(other, target_is_directory=True)
+        result = self.run_installer()
+        self.assertNotEqual(result.returncode, 0)
+        self.assert_no_package_changes()
+        self.assertTrue(self.destination.is_symlink())
+        self.assertEqual(list(other.iterdir()), [])
+
+    def test_post_commit_failure_reports_verified_binary_remains(self):
+        self.state["daemon_reload_exit"] = 5
+        result = self.run_installer()
+        self.assertEqual(result.returncode, 5, result.stdout + result.stderr)
+        self.assertEqual(self.destination.read_bytes(), BINARY)
+        self.assertIn("verified binary is installed", result.stderr)
+        self.assert_staging_removed()
+
+    def test_signal_after_commit_keeps_verified_binary(self):
+        self.state["signal_after_commit"] = True
+        result = self.run_installer()
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.destination.read_bytes(), BINARY)
+        self.assertIn("verified binary is installed", result.stderr)
+        self.assert_staging_removed()
+
     def test_local_success_selective_atomic_install_without_start(self):
         self.assert_success(self.run_installer())
         self.assertFalse(any(e["command"] == "curl" for e in self.events()))
+
+    def test_fresh_install_without_previous_binary(self):
+        self.destination.unlink()
+        self.assert_success(self.run_installer(), previous=None)
 
     def test_download_success_validates_real_shell_continuations(self):
         self.assert_success(self.run_installer(download=True))

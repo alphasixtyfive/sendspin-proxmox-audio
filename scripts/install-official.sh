@@ -12,8 +12,16 @@ test "$ID" = debian
 test "$VERSION_ID" = 13
 test "$(getent passwd sendspin-cli | cut -d: -f6)" = /var/lib/sendspin-cli
 test -d /var/lib/sendspin-cli
-test "$(id -u sendspin-cli)" -gt 0
+audio_uid=$(id -u sendspin-cli)
+test "$audio_uid" -gt 0
+test ! -L /var/lib/sendspin-cli
+test "$(stat -c %u /var/lib/sendspin-cli)" = "$audio_uid"
+runuser -u sendspin-cli -- test -r /var/lib/sendspin-cli
+runuser -u sendspin-cli -- test -w /var/lib/sendspin-cli
+runuser -u sendspin-cli -- test -x /var/lib/sendspin-cli
 id -nG sendspin-cli | tr ' ' '\n' | grep -Fxq audio
+test ! -L /usr/local/bin/sendspin-cli
+test ! -e /usr/local/bin/sendspin-cli || test -f /usr/local/bin/sendspin-cli
 
 if systemctl is-active --quiet sendspin-cli.service; then
     echo 'The single-player system service is active; stop and disable it first.' >&2
@@ -53,9 +61,14 @@ printf '%s  %s\n' "$expected" "$cache/$archive" | sha256sum --check --status
 
 stage=$(mktemp -d "$cache/install.XXXXXX")
 binary_stage=
+committed=false
 cleanup() {
+    task_status=$?
     test -z "$binary_stage" || rm -f -- "$binary_stage"
     rm -rf -- "$stage"
+    if test "$task_status" -ne 0 && test "$committed" = true; then
+        echo 'The verified binary is installed, but a later step failed. Keep players stopped and inspect before starting.' >&2
+    fi
 }
 trap cleanup EXIT
 trap 'exit 1' HUP INT TERM
@@ -63,12 +76,13 @@ tar -xOf "$cache/$archive" sendspin-cli-0.4.0-linux-x86_64/usr/local/bin/sendspi
 tar -xOf "$cache/$archive" sendspin-cli-0.4.0-linux-x86_64/BUILD-INFO.txt > "$stage/BUILD-INFO.txt"
 printf '%s  %s\n' 350b891ed3f11b73cf428cb7dc8bc8a9dd809892515c69fb2bca6724867cda7b "$stage/sendspin-cli" | sha256sum --check
 
-# The seven user services replace the upstream single-player system service.
-systemctl mask sendspin-cli.service
 binary_stage=$(mktemp /usr/local/bin/.sendspin-cli.XXXXXX)
 install -m 0755 "$stage/sendspin-cli" "$binary_stage"
-mv -f -- "$binary_stage" /usr/local/bin/sendspin-cli
+"$binary_stage" --version
+# The seven user services replace the upstream single-player system service.
+systemctl mask sendspin-cli.service
+mv -fT -- "$binary_stage" /usr/local/bin/sendspin-cli
+committed=true
 binary_stage=
 install -m 0644 "$stage/BUILD-INFO.txt" "$cache/BUILD-INFO.txt"
 systemctl daemon-reload
-/usr/local/bin/sendspin-cli --version

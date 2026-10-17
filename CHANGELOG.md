@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.2 — 17 October 2026
+
+- Reject a wrongly owned, inaccessible or symlinked player home before changing packages.
+- Refuse directory or symlink executable destinations and use an exact-destination atomic rename.
+- Run the verified candidate before replacing a working executable. Report failures after replacement without implying that package or service changes were rolled back.
+- Keep dependent players running through automatic PipeWire/WirePlumber failure recovery using standard systemd user drop-ins. Explicit stops and restarts retain their behavior.
+- Add fresh-install, interruption and failure-boundary tests.
+
+The official player and the installed v0.1.1 room-service policy are unchanged.
+
 ## 0.1.1 — 17 October 2026
 
 - Fixed extra shell escapes that broke the fresh-install checksum and download commands.

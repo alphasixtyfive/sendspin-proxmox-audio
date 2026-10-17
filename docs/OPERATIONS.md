@@ -30,7 +30,9 @@ Use reviewed release versions and hashes, not an automatic `latest` downloader. 
 
 Retain the previous verified binary and **matching pre-upgrade private state/config backup**. Stop the user target, install the reviewed binary, restart one pilot and prove pairing/identity retention, routing and normal TTS/music before the whole target. A binary downgrade alone may be unsafe after a state/protocol migration; restore the matching backup. Do not erase working pairing state as a routine upgrade step.
 
-Install ordinary Debian security updates and record actual versions. Recheck routing/fail-closed behavior after PipeWire/WirePlumber upgrades. Their packaged services remain unchanged; this repository supplies only normal configuration. A distribution/kernel update and a player update are separate changes with separate rollback boundaries.
+The installer checks the archive, binary checksum and staged executable before its atomic rename into `/usr/local/bin/sendspin-cli`. Failure or a handled interruption before that rename leaves the previous binary intact, or leaves the destination absent on a fresh install. Package installation and the system-unit mask are separate operations; this is not a transaction over the whole CT. After the rename, a build-information or daemon-reload failure can return an error while the complete verified new binary remains installed. The installer reports that boundary. Keep players stopped, inspect the installed checksum/build information and resolve the failed step before starting them or deliberately restoring the previous binary. It does not automatically roll back packages, masks or private state.
+
+Install ordinary Debian security updates and record actual versions. Recheck routing/fail-closed behavior after PipeWire/WirePlumber upgrades. Their packaged unit files remain unchanged; user drop-ins set RestartMode=direct for automatic daemon recovery. This repository supplies normal configuration. A distribution/kernel update and a player update are separate changes with separate rollback boundaries.
 
 ## Replug and restart limits
 
@@ -40,6 +42,8 @@ An ordinary ALSA XRUN/suspend recovery on an existing handle differs from USB re
 
 
 ## Audio-server maintenance
+
+Automatic PipeWire/WirePlumber failure recovery uses `RestartMode=direct` so a temporary failure does not stop the dependent room services. Stock daemon `Restart=on-failure` is retained. This differs from an explicit stop or restart. See [systemd 257 service semantics](https://github.com/systemd/systemd/blob/v257/man/systemd.service.xml) and its [restart-dependency implementation](https://github.com/systemd/systemd/blob/v257/src/core/service.c). A daemon that exits cleanly without an automatic restart may still need the manual recovery below.
 
 An explicit restart of PipeWire or WirePlumber restarts the participating room services in order, using their existing private identities. `Type=exec` reports an executable launch failure immediately; it does not mean a player is paired or ready to play.
 
@@ -53,3 +57,5 @@ systemctl --user restart sendspin-zones.target
 This explicitly restores the configured group. If you intentionally stopped an individual room for maintenance, check its state before bringing the group back. A process can be alive while its device recovery has failed; inspect the actual room route and playback rather than relying only on `active`.
 
 To roll back the v0.1.1 service policy, stop the zone target, restore its previous template from the matching backup, run `daemon-reload`, then start the target. The player binary and paired state are unchanged by this setup release. Restore any retired system files only for a deliberate return to the upstream single-player deployment.
+
+To remove the v0.1.2 automatic-daemon policy, stop the zone target, remove only the two documented `50-direct-restart.conf` files from the account’s audio-service drop-in directories, run `daemon-reload`, then start the ordinary stack and target. This reintroduces the demonstrated transient-crash stop behavior; keep the matching backup and test the intended replacement policy.

@@ -20,7 +20,7 @@ usermod -aG audio sendspin-cli
 loginctl enable-linger sendspin-cli
 ```
 
-Create this persistent-home account before installing the player. The installer checks that it is a non-root account with audio-group membership. Reuse an existing correctly configured account rather than recreating it. No pipewire-pulse/PulseAudio daemon, desktop session, compiler or nested Docker is needed.
+Create this persistent-home account before installing the player. The installer requires a non-root account with audio-group membership. Its home must be a real directory owned by that account's numeric UID, with read, write and traversal access for the account. A reused root-owned or inaccessible home is rejected; inspect its ownership and permissions rather than applying a recursive repair. No pipewire-pulse/PulseAudio daemon, desktop session, compiler or nested Docker is needed.
 
 The CT must not independently store/restore hardware calibration: the **host alone owns the mixer state**. Mask both CT ALSA services and suppress its packaged restore rule with the standard same-name `/etc/udev/rules.d` symlink **before granting control devices**. If an override already exists, inspect it rather than overwrite it. Reload CT udev rules only if its daemon is already active; do not start a CT udev daemon just to reload. Gracefully stop the CT before its first device assignment, configure the narrow access described in [SECURITY.md](SECURITY.md), then start it normally. Recheck masks/override and unchanged host mixer gains after CT startup. No host udev database mount or CT metadata-repair service is needed.
 
@@ -30,9 +30,9 @@ From the repository root, install the verified official release:
 sh scripts/install-official.sh ACTUAL_CT_HOSTNAME
 ```
 
-This script checks hostname, LXC, architecture, Debian version and account home; verifies the upstream archive and installed binary hashes; installs dependencies/payload; and starts nothing. Do not enable the shipped single-player **system** `sendspin-cli.service`; the deployment uses user template instances instead.
+This script checks hostname, LXC, architecture, Debian version and account home; verifies the upstream archive and binary hashes; installs dependencies and the verified binary; and starts nothing. Do not enable the single-player **system** `sendspin-cli.service`; the deployment uses user template instances instead.
 
-The installer copies only the verified binary and build information. It does not unpack the upstream system service or sysusers declaration. It masks `sendspin-cli.service` to keep that single-player service from competing with the room services. If that service is already active or enabled, stop and disable it deliberately before continuing.
+The installer copies only the verified binary and build information. It runs the staged binary's `--version` before replacing an existing executable, and rejects a symlink or non-file at the destination. It does not unpack the upstream system service or sysusers declaration. It masks `sendspin-cli.service` to keep that single-player service from competing with the room services. If that service is already active or enabled, stop and disable it deliberately before continuing. See the [installation failure boundary](OPERATIONS.md#upgrades-and-rollback) before upgrading a working installation.
 
 ## 2. Make explicit local configuration
 
@@ -62,6 +62,35 @@ Install completed native files as root:
 - Completed `zone-N.conf` → `/etc/sendspin-zones/`, readable by `sendspin-cli`
 - `systemd/sendspin-zone@.service` and your configured `sendspin-zones.target` → `/var/lib/sendspin-cli/.config/systemd/user/`, owned by `sendspin-cli`
 
+For the player configuration and user units, these root commands set explicit access without changing an existing home recursively:
+
+```sh
+install -d -o root -g sendspin-cli -m 0750 /etc/sendspin-zones
+install -o root -g sendspin-cli -m 0640 local/sendspin-zones/zone-*.conf /etc/sendspin-zones/
+install -d -o sendspin-cli -g sendspin-cli -m 0700 \
+  /var/lib/sendspin-cli/.config /var/lib/sendspin-cli/.config/systemd \
+  /var/lib/sendspin-cli/.config/systemd/user
+install -o sendspin-cli -g sendspin-cli -m 0644 \
+  systemd/sendspin-zone@.service local/sendspin-zones.target \
+  /var/lib/sendspin-cli/.config/systemd/user/
+```
+
+On Debian 13's systemd 257, install the two audio-service drop-ins as well:
+
+```sh
+for daemon in pipewire wireplumber; do
+  install -d -o sendspin-cli -g sendspin-cli -m 0700 \
+    "/var/lib/sendspin-cli/.config/systemd/user/$daemon.service.d"
+  install -o sendspin-cli -g sendspin-cli -m 0644 \
+    "systemd/$daemon.service.d/50-direct-restart.conf" \
+    "/var/lib/sendspin-cli/.config/systemd/user/$daemon.service.d/"
+done
+```
+
+These use systemd's `RestartMode=direct` for automatic daemon recovery. Without it, a transient daemon crash can stop the room services through `PartOf`, leaving them stopped after the daemon returns. Explicit stops and restarts still propagate. Check the loaded `RestartMode` for both services after `daemon-reload`; both must say `direct`. This setup targets Debian 13; don't copy this policy to an older systemd without checking support and behavior.
+
+Inspect existing files and directory owners before running these commands. The zone configuration directory needs traversal permission as well as readable files; root-owned mode 0600 files will prevent the player from starting.
+
 Refuse activation if any `@...@` marker remains. Client rules are loaded by each player process when connecting; restart players after changing those rules, not just the daemon. They restrict explicit targets from falling back/moving to another room. Loopback playback halves separately wait/relink to their own physical target.
 
 ## 3. Start native services, then one player
@@ -72,18 +101,24 @@ Use the same account/session for every native command:
 audio_uid=$(id -u sendspin-cli)
 audio_runtime=/run/user/$audio_uid
 systemctl start "user@$audio_uid.service"
-runuser -u sendspin-cli -- env XDG_RUNTIME_DIR="$audio_runtime" \
-  DBUS_SESSION_BUS_ADDRESS="unix:path=$audio_runtime/bus" \
-  systemctl --user enable --now pipewire.socket pipewire.service wireplumber.service
+as_audio() {
+  runuser -u sendspin-cli -- env XDG_RUNTIME_DIR="$audio_runtime" \
+    DBUS_SESSION_BUS_ADDRESS="unix:path=$audio_runtime/bus" "$@"
+}
+as_audio systemctl --user daemon-reload
+as_audio systemctl --user enable --now pipewire.socket pipewire.service wireplumber.service
+as_audio systemctl --user restart pipewire.service wireplumber.service
+as_audio systemctl --user show pipewire.service wireplumber.service -p Id -p RestartMode
 ```
 
-Use that `runuser ... env` prefix for `wpctl status`, `sendspin-cli -l` and these commands too:
+The explicit restart loads the newly installed graph even if linger or the socket had already started the daemons. Both loaded RestartMode values must be direct. This interrupts any existing rooms in the shared graph; use this installation step while they are stopped.
+
+Use `as_audio` for `wpctl status`, `sendspin-cli -l` and the following user commands too:
 
 ```sh
-systemctl --user daemon-reload
-systemd-analyze --user verify /var/lib/sendspin-cli/.config/systemd/user/sendspin-zone@.service
-systemctl --user start sendspin-zone@zone-1.service
-sendspin-cli status --control-socket "$audio_runtime/sendspin-zones/zone-1/control.sock"
+as_audio systemd-analyze --user verify /var/lib/sendspin-cli/.config/systemd/user/sendspin-zone@.service
+as_audio systemctl --user start sendspin-zone@zone-1.service
+as_audio sendspin-cli status --control-socket "$audio_runtime/sendspin-zones/zone-1/control.sock"
 ```
 
 Check exact native outputs, distinct physical clocks, channel routes, service identity and no competing renderer before audio. Adapter creation probes the selected PCM's formats; starting PipeWire is an intentional hardware-initialization boundary. Pair this one endpoint before starting more. Only after acceptance start/enable `sendspin-zones.target` for all configured instances. No script starts content or migrates MA entities.
@@ -109,9 +144,9 @@ Replace `CTID` with your container ID. The `up=10` value is a delay **after** th
 Inside the CT, keep linger enabled for `sendspin-cli`, enable the PipeWire socket/services as above, and enable the configured zone target only after pairing and playback checks:
 
 ```sh
-systemctl --user enable --now sendspin-zones.target
-systemctl --user is-enabled pipewire.socket pipewire.service wireplumber.service sendspin-zones.target
-systemctl --user is-active pipewire.service wireplumber.service sendspin-zones.target
+as_audio systemctl --user enable --now sendspin-zones.target
+as_audio systemctl --user is-enabled pipewire.socket pipewire.service wireplumber.service sendspin-zones.target
+as_audio systemctl --user is-active pipewire.service wireplumber.service sendspin-zones.target
 ```
 
-Run these user commands through the account/runtime prefix from step 3. Verify `loginctl show-user sendspin-cli -p Linger` says `Linger=yes`. Then restart the CT through Proxmox and check all room identities, routes and listening levels. Do not enable `pve-container@CTID.service` yourself; Proxmox owns container startup.
+Run these user commands through `as_audio` from step 3, or its explicit account/runtime prefix. Verify `loginctl show-user sendspin-cli -p Linger` says `Linger=yes`. Then restart the CT through Proxmox and check all room identities, routes and listening levels. Do not enable `pve-container@CTID.service` yourself; Proxmox owns container startup.
