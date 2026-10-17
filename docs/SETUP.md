@@ -20,7 +20,7 @@ usermod -aG audio sendspin-cli
 loginctl enable-linger sendspin-cli
 ```
 
-Precreate this persistent-home account before the official player's sysusers declaration, which has no home of its own. Reuse an existing correctly configured account rather than recreating it. No pipewire-pulse/PulseAudio daemon, desktop session, compiler or nested Docker is needed.
+Create this persistent-home account before installing the player. The installer checks that it is a non-root account with audio-group membership. Reuse an existing correctly configured account rather than recreating it. No pipewire-pulse/PulseAudio daemon, desktop session, compiler or nested Docker is needed.
 
 The CT must not independently store/restore hardware calibration: the **host alone owns the mixer state**. Mask both CT ALSA services and suppress its packaged restore rule with the standard same-name `/etc/udev/rules.d` symlink **before granting control devices**. If an override already exists, inspect it rather than overwrite it. Reload CT udev rules only if its daemon is already active; do not start a CT udev daemon just to reload. Gracefully stop the CT before its first device assignment, configure the narrow access described in [SECURITY.md](SECURITY.md), then start it normally. Recheck masks/override and unchanged host mixer gains after CT startup. No host udev database mount or CT metadata-repair service is needed.
 
@@ -31,6 +31,8 @@ sh scripts/install-official.sh ACTUAL_CT_HOSTNAME
 ```
 
 This script checks hostname, LXC, architecture, Debian version and account home; verifies the upstream archive and installed binary hashes; installs dependencies/payload; and starts nothing. Do not enable the shipped single-player **system** `sendspin-cli.service`; the deployment uses user template instances instead.
+
+The installer copies only the verified binary and build information. It does not unpack the upstream system service or sysusers declaration. It masks `sendspin-cli.service` to keep that single-player service from competing with the room services. If that service is already active or enabled, stop and disable it deliberately before continuing.
 
 ## 2. Make explicit local configuration
 
@@ -91,3 +93,25 @@ Check exact native outputs, distinct physical clocks, channel routes, service id
 Use MA's official player setup/pairing flow and follow the method it actually offers. In the reviewed MA2.11 beta flow, a player advertising PIN support selects **code pairing**: read the fresh code from `sendspin-cli status --control-socket ...` or the player's private journal and enter it in MA. Run `sendspin-cli pair confirm --control-socket ...` only if status/logs say an attempt is waiting for confirmation. Use `pair-token` only when the server interface offers token pairing; do not require an unavailable token field or add a pairing broker.
 
 Verify `trust: paired` after completion. Codes/tokens and state are secrets; do not paste them into issue reports or source. Each room must have its own state directory. Set safe MA listening levels/mute before an audible test; the defaults do not encode your amplifier calibration. Follow [VALIDATION.md](VALIDATION.md) before migrating.
+
+
+## 5. Start at boot
+
+On the **Proxmox host**, enable Start at boot for the chosen CT. Choose an order that fits your other guests:
+
+```sh
+pct set CTID --onboot 1 --startup order=30,up=10
+pct config CTID
+```
+
+Replace `CTID` with your container ID. The `up=10` value is a delay **after** this CT starts, before the next guest. It does not wait for a USB device to appear. Both configured soundcards and their narrow device mappings must be present when Proxmox starts the CT.
+
+Inside the CT, keep linger enabled for `sendspin-cli`, enable the PipeWire socket/services as above, and enable the configured zone target only after pairing and playback checks:
+
+```sh
+systemctl --user enable --now sendspin-zones.target
+systemctl --user is-enabled pipewire.socket pipewire.service wireplumber.service sendspin-zones.target
+systemctl --user is-active pipewire.service wireplumber.service sendspin-zones.target
+```
+
+Run these user commands through the account/runtime prefix from step 3. Verify `loginctl show-user sendspin-cli -p Linger` says `Linger=yes`. Then restart the CT through Proxmox and check all room identities, routes and listening levels. Do not enable `pve-container@CTID.service` yourself; Proxmox owns container startup.

@@ -1,32 +1,45 @@
 # Sendspin audio on Proxmox
 
-Deployment configuration for **released, unmodified Sendspin CLI** and distribution **PipeWire/WirePlumber** in a dedicated, unprivileged Linux container. Music Assistant remains the music server and controller. This repository contains no audio renderer fork, source patches, custom daemon or Home Assistant app.
+Run one official Sendspin player per room in an unprivileged Proxmox container. Music Assistant controls the rooms; PipeWire sends each stereo pair to the right soundcard outputs.
 
-**Status: deployment configuration tested on one two-card, seven-zone installation.** Native eight-channel/48kHz playback, all seven active routes, cold/warm announcement listening, music interruption/resume, MA outage/reconnection, CT restart and isolated USB-audio driver reload with calibration preserved have passed. Physical host boot, arbitrary USB replug, full restore and every negative routing scenario remain unproven. Results apply to the recorded configuration and hardware; read the [acceptance record](docs/VALIDATION.md) before adapting it.
+This is the setup used for seven rooms on two Cubilux CA7 interfaces. The players use the host's USB audio driver directly, so audio stays outside the Home Assistant VM. Home Assistant and Music Assistant can remain where they are.
 
 ```text
-Music Assistant → stock Sendspin players → stock PipeWire stereo routes
-                                              ↓
-                                  host ALSA / USB soundcards → amplifier
+Music Assistant → Sendspin players → PipeWire → USB soundcards → amplifiers
 ```
 
-The CT shares Proxmox's kernel and uses host-owned sound devices directly. It avoids passing USB through a QEMU virtual controller and does not use PulseAudio output. One persistent Sendspin identity and supervised process represent each stereo zone.
+The repository contains configuration and an installer for the released Sendspin CLI. It does not modify Sendspin, PipeWire or QEMU. Each room has its own paired identity and listening level. The host owns fixed hardware calibration; Music Assistant owns queues, volume and announcements.
 
-The supplied example splits two Cubilux CA7 7.1 interfaces into seven independent stereo zones. Two stock PipeWire ALSA adapters open explicitly named hardware; WirePlumber's automatic ALSA monitor is disabled. This preserves narrow Proxmox device grants without relying on automatic card enumeration or exposing the host udev database. It uses generic names, explicit server/card-ID placeholders and **no preset gain or pairing credentials**. Other devices need their own channel/format validation. Center/LFE can be used as a full-range stereo pair only after checking routing and hardware behavior.
+## Getting started
 
-1. Read [security and device access](docs/SECURITY.md).
-2. Follow [setup](docs/SETUP.md), filling a private local configuration.
-3. Complete the [acceptance checks](docs/VALIDATION.md) before migration.
-4. Keep identities backed up and follow [upgrade/restore](docs/OPERATIONS.md).
+1. Read [device access and security](docs/SECURITY.md).
+2. Follow [setup](docs/SETUP.md) for a dedicated Debian 13 container.
+3. Adapt the [seven-room example](examples/two-ca7-seven-zones) to your wiring. Set your own soundcard IDs and server address.
+4. Enable startup, pair the players and run the [playback checks](docs/VALIDATION.md).
+5. Keep the private player state and [host audio configuration](docs/HOST-AUDIO.md) backed up.
 
-The [host audio guide](docs/HOST-AUDIO.md) explains persistent physical IDs, optional standard index allocation and calibration ownership without copying private port mappings or gains.
+The example has no preset amplifier gain or household credentials. Check each physical output at a safe level, especially if using a center/subwoofer socket as a stereo pair. See [migration](docs/MIGRATION.md) when replacing older players.
 
-[Legacy-app migration](docs/MIGRATION.md) describes replacing older local players without reusing their IDs incorrectly. This deployment is a new setup, not a continuation of a patched app release.
+## Startup and recovery
 
-The reviewed player is [Sendspin CLI v0.4.0](https://github.com/Sendspin/sendspin-cpp-cli/releases/tag/v0.4.0), with core v0.9.5; exact revisions and checksums are in [upstream-pins.json](upstream-pins.json). The installer verifies the official amd64 archive and binary and starts nothing. The example services retain normal player defaults and explicitly named native PipeWire outputs. Pairing is required. No watchdog, queue replay, keepalive helper or automatic device rebinding is added.
+Proxmox must have **Start at boot** enabled for the CT. Inside it, a lingering systemd user manager starts PipeWire, WirePlumber and the enabled room players without an interactive login. The room services restart after an unexpected exit and follow audio-server restarts. A deliberate service stop stays stopped.
 
-Stock limitations remain visible: finite device recovery attempts, an output stream that may remain active after playback, specific CT device-node mappings and new encrypted player identities. A missing physical adapter at startup needs an ordinary PipeWire restart after hardware becomes available; static configuration adds no rediscovery watcher. Read the setup/operations guidance before relying on unattended recovery.
+The installer verifies the official archive and binary, installs just the binary and build information, and masks the unused single-player system service. It refuses to replace a running player. Nothing starts music automatically or replays a queue.
 
-Configuration in this repository is MIT licensed. Upstream Sendspin is Apache 2.0 licensed and downloaded from its own release; PipeWire/WirePlumber/ALSA keep their respective licenses. See [provenance](docs/PROVENANCE.md).
+USB recovery still depends on the hardware and its device mappings. If a card is absent at startup, make it available and restart the audio services. A USB replug that changes device nodes may need updated CT grants and a CT restart. The setup does not guess a replacement card or expose every sound device. [Operations](docs/OPERATIONS.md) has the recovery commands and remaining limits.
 
-Repository checks: `python3 scripts/check.py` and `sh -n scripts/install-official.sh`. They check the deployment inventory and shell syntax without network, hardware, installation or playback. They do not replace the physical acceptance record.
+The [validation record](docs/VALIDATION.md) separates actual playback and recovery tests from things still untested. A physical host reboot and full backup restoration need their own planned checks.
+
+## Versions and checks
+
+The player is [Sendspin CLI 0.4.0](https://github.com/Sendspin/sendspin-cpp-cli/releases/tag/v0.4.0), with core 0.9.5. [Exact pins and checksums](upstream-pins.json) are kept with the configuration. See the [changelog](CHANGELOG.md) for setup releases.
+
+```sh
+python3 scripts/check.py
+sh -n scripts/install-official.sh
+python3 -B -m unittest discover -s tests -v
+```
+
+The tests exercise installation in a temporary filesystem without changing services or using the network. They do not replace physical playback tests.
+
+Configuration is MIT licensed. Sendspin is Apache 2.0 licensed; the audio packages retain their own licenses. See [provenance](docs/PROVENANCE.md).

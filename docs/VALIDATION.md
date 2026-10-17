@@ -4,6 +4,12 @@
 
 Passed on that installation:
 
+- With the v0.1.1 service policy, an external SIGTERM to one player recovered in about 5.3 seconds without restarting the other six. PipeWire restart recovered the participating players while a deliberately stopped room stayed stopped; WirePlumber restart recovered all seven. Stopping the zone target stayed effective beyond the restart interval, and starting it restored the group. Paired state, configuration, routing and fixed gains remained unchanged.
+- A full graceful CT shutdown and start brought up the audio services and all seven enabled players without a login or manual service start. Proxmox Start at boot was enabled and linger persisted. The original HA/MA entities, queues, references, settings and automation states matched after the restart. This tests the CT startup path; it is not a physical host power-cycle test.
+- Twelve isolated Linux installer tests passed, including the actual download command, invalid archives/checksums, duplicate-service guards and atomic binary replacement. They ran as an unprivileged account with real shell/archive/checksum/file operations and substituted package/service commands. CI runs the same repository checks and installer tests.
+
+No new listening result is claimed for the service-policy update. Its final normal announcement check was skipped because the existing household guard blocked announcements. The official audio binary, output configuration and earlier listening results below are unchanged; the updated startup/recovery policy was checked separately above.
+
 - Two explicit stock physical adapters opened eight-channel S16LE at 48 kHz, with distinct clock names, exact stereo channel pairs and disabled automatic ALSA monitoring. Narrow control/PCM0 grants and host-only mixer ownership were verified.
 - Actual Sendspin CLI streams were inspected during a five-zone announcement and a separate two-zone test, covering all seven endpoints. Named-target fail-closed properties were present and active links reached only the intended room/channel pairs. This is a positive opened-stream/link proof, not all possible negative-policy cases.
 - The first single-room announcement and the normal five-room announcement flow were confirmed clear by the listener in the rooms heard. The separate two-zone service request exceeded its response timeout; observed correct links and eventual idle return are not a separate successful service-response or listening claim.

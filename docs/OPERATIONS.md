@@ -4,9 +4,9 @@
 
 Run user-manager/control commands as `sendspin-cli` with its real `XDG_RUNTIME_DIR` and user bus, as in [setup](SETUP.md). Each instance has its own `/etc/sendspin-zones/ZONE.conf`, `%S/sendspin-zones/ZONE` identity/state, and `%t/sendspin-zones/ZONE/control.sock`. For this account, `%S` is normally `/var/lib/sendspin-cli/.local/state` and `%t` is `/run/user/UID`.
 
-`systemctl --user stop sendspin-zones.target` intentionally stops its member players; restart recreates them with the same persistent identities. A player process failure is retried after 5 seconds. An intentional stop is respected. The template does not restart PipeWire, inspect queues or replay media. Ordinary media stop differs from process stop: stock CLI clears its ring but may leave the audio callback/device active. No extra keepalive is configured.
+`systemctl --user stop sendspin-zones.target` intentionally stops its member players; restart recreates them with the same persistent identities. An unexpected player exit, including a clean exit after an external SIGTERM, is retried after 5 seconds. `systemctl stop` still means stop. The template does not restart PipeWire, inspect queues or replay media. Ordinary media stop differs from process stop: stock CLI clears its ring but may leave the audio callback/device active. No extra keepalive is configured.
 
-Stock CLI recovery has a finite reopen/rescan budget. A running process can exhaust it and discard until a new stream configures, so `Restart=on-failure` is not a cure for every silent endpoint. The graph and kernel also have separate device-recovery responsibilities. Keep the actual outage/replug validation record; do not add a watchdog to make a failed test appear successful. [Stock recovery](https://github.com/Sendspin/sendspin-cpp-cli/blob/45ff8b00e72ad1572a39e6e8ce21891748ab7d9e/src/sink_recovery.cpp#L62), [native clear/stop](https://github.com/Sendspin/sendspin-cpp-cli/blob/45ff8b00e72ad1572a39e6e8ce21891748ab7d9e/src/pipewire_sink.cpp#L447).
+Stock CLI recovery has a finite reopen/rescan budget. A running process can exhaust it and discard until a new stream configures, so a restart policy alone cannot repair every silent endpoint. The graph and kernel also have separate device-recovery responsibilities. Keep the actual outage/replug validation record; do not add a watchdog to make a failed test appear successful. [Stock recovery](https://github.com/Sendspin/sendspin-cpp-cli/blob/45ff8b00e72ad1572a39e6e8ce21891748ab7d9e/src/sink_recovery.cpp#L62), [native clear/stop](https://github.com/Sendspin/sendspin-cpp-cli/blob/45ff8b00e72ad1572a39e6e8ce21891748ab7d9e/src/pipewire_sink.cpp#L447).
 
 The reference installation passed a real MA-server outage/restart with all seven existing player processes left running: they reconnected without configuration repair or player restart. Its normal music-announcement-resume flow also preserved the queue context and restored listening volume. These bounded results do not extend the separate USB/static-adapter recovery limits below.
 
@@ -34,6 +34,22 @@ Install ordinary Debian security updates and record actual versions. Recheck rou
 
 ## Replug and restart limits
 
-The two physical adapters are configured directly at PipeWire startup. Their `nofail` flag permits the server to start when a card is missing or cannot open; it does not schedule another creation attempt. After making the correctly identified hardware available, perform an ordinary `systemctl --user restart pipewire.service wireplumber.service`, then verify the exact physical nodes/links and restart affected player instances if needed. Preserve state directories and pairing. Coordinate the restart because it interrupts every zone in that shared graph.
+The two physical adapters are configured directly at PipeWire startup. Their `nofail` flag permits the server to start when a card is missing or cannot open; it does not schedule another creation attempt. After making the correctly identified hardware available, perform an ordinary `systemctl --user restart pipewire.service wireplumber.service`, then verify the exact physical nodes and links. The room units follow these explicit daemon restarts through `PartOf`. Preserve state directories and pairing. Coordinate the restart because it interrupts every zone in that shared graph.
 
 An ordinary ALSA XRUN/suspend recovery on an existing handle differs from USB removal/rediscovery. Neither stock Sendspin's finite retries nor static adapter configuration establishes automatic recovery from every USB fault. If re-enumeration changes device minors, stop the CT, update its supported `devN` assignments after checking physical identity/exclusive ownership, and start it normally. A stable card ID selects the intended hardware; it does not update Proxmox node permissions. Test same-minor return, changed-minor return and absent-at-start separately. No script broadens permissions, changes other USB assignments, replays queues or installs a host watcher.
+
+
+## Audio-server maintenance
+
+An explicit restart of PipeWire or WirePlumber restarts the participating room services in order, using their existing private identities. `Type=exec` reports an executable launch failure immediately; it does not mean a player is paired or ready to play.
+
+Stopping a daemon and starting it later is different from restarting it. After a separate stop/start, start the room target again:
+
+```sh
+systemctl --user start pipewire.service wireplumber.service
+systemctl --user restart sendspin-zones.target
+```
+
+This explicitly restores the configured group. If you intentionally stopped an individual room for maintenance, check its state before bringing the group back. A process can be alive while its device recovery has failed; inspect the actual room route and playback rather than relying only on `active`.
+
+To roll back the v0.1.1 service policy, stop the zone target, restore its previous template from the matching backup, run `daemon-reload`, then start the target. The player binary and paired state are unchanged by this setup release. Restore any retired system files only for a deliberate return to the upstream single-player deployment.

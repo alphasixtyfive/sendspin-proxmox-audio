@@ -9,6 +9,6 @@ This is a fresh deployment of stock upstream software. It does not import a patc
 5. Pair each new encrypted identity separately. CLI 0.4 refuses the former explicit `--id`; its persisted keypair is the ID. Old MA volume/group/entity assignments do not automatically transfer. Record the old/new IDs and deliberately update MA groups and the existing HA announcement flow after acceptance. Retire duplicate old players only when the working path is clear.
 6. Disable/remove the old app through its supported lifecycle. Remove only its obsolete routes/settings and return obsolete custom images/packages to their supported upstream versions after confirming no other consumer needs them. This repository does not downgrade a host hypervisor or edit unrelated HA configuration.
 
-An older app's published repository/release can be marked deprecated with a link to the replacement deployment. Preserve its historical tags and rollback source rather than rewriting public history. Publishing/archiving repositories is an owner action, not an installer side effect.
+Before removing an old repository, keep a verified Git bundle, release metadata/assets and the matching private configuration backup. Check that the replacement is published and recoverable first. Repository deletion is a separate owner action; the installer never changes GitHub repositories.
 
 The new public project contains no patches, generated private topology, identity blobs, pairing broker or logs. Configuration is the maintained boundary; new source workarounds are not part of this migration.
