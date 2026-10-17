@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.3 — 17 October 2026
+
+- Add an optional isolated PipeWire routing/recovery test, including missing targets, default changes and virtual soundcard removal/return.
+- Read expected channel assignments from the routing file instead of duplicating a map in the test.
+- Document checks for USB return, daemon/server/CT restart, host boot and backup restoration, with automatic and manual recovery boundaries.
+- Check Python syntax alongside the existing repository checks, and document bounded per-player readiness after boot.
+
+Production configuration and the official audio binaries are unchanged from v0.1.2.
+
 ## 0.1.2 — 17 October 2026
 
 - Reject a wrongly owned, inaccessible or symlinked player home before changing packages.

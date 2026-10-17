@@ -24,6 +24,42 @@ The final reference environment also used the ordinary released Proxmox QEMU 11.
 
 Not yet established: physical host boot, arbitrary USB replug/same-or-changed-minor return, full backup restoration, every missing-target/default-change/forced-move policy scenario, or long-term/sample-perfect synchronization. A clean graph or absence of warnings alone does not establish acoustic quality. Local repository checks below cover syntax/inventory/privacy; they do not simulate hardware or replace these observations.
 
+A subsequent real CT boot exercised startup retry: one player initially rejected its named output before the graph had registered it. The existing five-second restart policy recovered it automatically. All seven current processes started within6.7seconds of CT init and remained stable; loaded daemon policy and configuration/device hashes were unchanged. The early snapshot remains recorded as failed, followed by the timestamp/state proof of convergence. Two normal five-room announcements then completed, restored levels/mutes and passed150 actual stream/hardware-route checks; HA/MA references/settings/queues were unchanged. Boot verification must check every configured player, not just the active group target.
+
+## Repeatable routing and recovery test
+
+Run this optional integration test as root inside the dedicated Debian 13 audio CT, from the repository root:
+
+```sh
+python3 tests/pipewire_policy.py --expected-hostname ACTUAL_CT_HOSTNAME \
+  --public-root . --output /var/tmp/sendspin-policy-results-UNIQUE
+```
+
+Use the CT's actual hostname and a fresh output path. The test requires the reviewed PipeWire 1.4.2/WirePlumber 0.5.8 baseline and the unchanged pinned example files. It launches disposable stock processes as nobody with no supplementary groups, no real sound-device access, a private bus/runtime and null outputs. It does not modify production services, send audio to the house or connect to Music Assistant. Temporary processes/runtime are cleaned up; the requested result directory retains its checks and graph evidence.
+
+The reference run passed 51 recorded checks across two cases. It checks missing named targets, changes of default output, exact seven-room channel links, removal/return of one virtual card while the other stays correct, and event history for wrong-target links. Channel expectations come from the example routing file, avoiding a second manually maintained map.
+
+A missing room makes pw-cat reject its stream; after that client exits, retry uses an explicit new client. This is not an actual Sendspin automatic-recovery test. The loopback case separately verifies automatic exact relinking when its virtual physical target returns. Neither case establishes real USB re-enumeration, driver permissions, mixer restoration or acoustic quality. The ordinary CI job checks this test's syntax; it does not run the native integration test.
+
+## Recovery event checklist
+
+Record a healthy baseline first: configured room identities, queues/levels, card IDs and physical ports, device grants, calibration, service policy and actual routes. After each event, inspect the room's real output and normal playback; active processes alone are insufficient.
+
+| Event | Expected behavior and checks |
+| --- | --- |
+| Unexpected player exit | The affected instance restarts after about five seconds with the same identity. Other rooms and queue context remain intact. |
+| PipeWire/WirePlumber crash | Stock automatic daemon recovery and direct restart mode preserve participating rooms. Check actual routing/playback and confirm a deliberately stopped room stays stopped. |
+| Deliberate daemon stop, then later start | Use the documented [audio-server maintenance](OPERATIONS.md#audio-server-maintenance) sequence to restore the configured room group. |
+| MA restart or network outage | Existing clients reconnect with their original paired identities. Check availability, references, levels and queue context; the check must not replay a queue itself. |
+| CT shutdown/start | Linger and enabled services start the configured rooms without login. Wait for each configured player to reach a stable running PID; an active target alone is insufficient. Check loaded direct restart mode, pairing, narrow grants, gains and routes. |
+| Card absent at startup | Required missing devN nodes may prevent CT start; a static nofail adapter may also remain absent. Restore the intended hardware and use [device recovery](OPERATIONS.md#replug-and-restart-limits). |
+| USB unplug/replug with the same device nodes | Confirm physical-port identity, actual node access, calibration and exact channel links. Use a coordinated ordinary audio restart if the static adapter did not return. Automatic USB recovery is not established. |
+| USB return with changed indices/minors | Keep the CT stopped while checking physical identity and refreshing only its corresponding narrow grants. Then start and validate every affected route. Never substitute a default output. |
+| Physical host reboot | Check host module options, per-port IDs, full gains, CT boot and unrelated USB consumers. This remains a separate untested gate. |
+| Backup restoration | Stop the original before activating its copied identities. Restore host configuration separately, then check ownership, mapping, gains and playback. Archive integrity/content comparison does not replace a full restore rehearsal. |
+
+The reference deployment's actual daemon failures, MA outage and CT startup are recorded above. A physical USB unplug/replug and host reboot have not been performed. Static adapter creation and changed-minor device access remain explicit manual recovery boundaries; this repository installs no periodic repair service.
+
 Repeat these gates for each new installation or relevant upgrade:
 
 1. Verify the official binary checksum/version, correct native backend, user/session ownership and one physical hardware owner. Inspect private state isolation, paired trust and actual target names. No leftover template markers.

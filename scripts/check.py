@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Read-only public example/provenance checks; no hardware or network access."""
 
+import ast
 import json
 import re
 from pathlib import Path
@@ -83,6 +84,8 @@ for path in root.rglob("*"):
     if path.resolve() == Path(__file__).resolve() or path.name == ".gitignore":
         continue
     text = path.read_text(encoding="utf-8")
+    if path.suffix == ".py":
+        ast.parse(text, filename=str(path))
     assert not re.search(r"(?<![\w.])(?:10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(?:1[6-9]|2\d|3[01])\.\d+\.\d+)(?![\w.])", text), path
     assert "blob-keypair=" not in text and "blob-pairing_psk=" not in text, path
     if path.suffix == ".md":
