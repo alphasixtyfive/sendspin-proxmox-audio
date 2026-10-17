@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.5 — 17 October 2026
+
+- Add one fast rollout path for restoring a verified installation or building a new container.
+- Clarify the optional missing-card boot preparation in the base setup guide.
+
+Documentation only; installed audio and recovery code are unchanged from 0.1.4.
+
 ## 0.1.4 — 17 October 2026
 
 - Add optional host USB recovery using udev events, a systemd path unit and supported Proxmox/PipeWire commands.

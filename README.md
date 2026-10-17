@@ -14,6 +14,8 @@ Each player keeps its own paired identity. Music Assistant owns the room queues 
 
 ## Set it up
 
+Start with [fast rollout](docs/ROLLOUT.md) for a restore or a new installation. It links each command/configuration owner once and includes the handover checks.
+
 1. Read [device access and security](docs/SECURITY.md).
 2. Follow [setup](docs/SETUP.md) for a dedicated Debian 13 container.
 3. Adapt the [seven-room example](examples/two-ca7-seven-zones) to your cards and wiring.

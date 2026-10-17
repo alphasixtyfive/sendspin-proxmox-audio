@@ -139,7 +139,7 @@ pct set CTID --onboot 1 --startup order=30,up=10
 pct config CTID
 ```
 
-Replace `CTID` with your container ID. The `up=10` value is a delay **after** this CT starts, before the next guest. It does not wait for a USB device to appear. Both configured soundcards and their narrow device mappings must be present when Proxmox starts the CT.
+Replace `CTID` with your container ID. The `up=10` value is a delay **after** this CT starts, before the next guest. It does not wait for USB. In the base setup, both configured soundcards and their narrow mappings must be present. The separately installed [host recovery](USB-RECOVERY.md) prepares available grants before host autostart so virtual rooms can start without a missing card; before a manual CT start after availability changes, invoke its `boot` preparation explicitly.
 
 Inside the CT, keep linger enabled for `sendspin-cli`, enable the PipeWire socket/services as above, and enable the configured zone target only after pairing and playback checks:
 
