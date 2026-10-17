@@ -1,0 +1,11 @@
+[Unit]
+Description=Process queued Sendspin USB changes
+After=pve-guests.service
+ConditionPathExists=/etc/sendspin-usb-recovery.json
+
+[Path]
+DirectoryNotEmpty=/run/sendspin-usb-recovery/events
+Unit=sendspin-usb-recovery.service
+
+[Install]
+WantedBy=multi-user.target

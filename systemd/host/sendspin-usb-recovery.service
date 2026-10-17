@@ -1,0 +1,11 @@
+[Unit]
+Description=Recover the configured Sendspin USB audio container
+StartLimitIntervalSec=0
+After=pve-guests.service
+ConditionPathExists=/etc/sendspin-usb-recovery.json
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/sendspin-usb-recovery reconcile
+TimeoutStartSec=240
+UMask=0077

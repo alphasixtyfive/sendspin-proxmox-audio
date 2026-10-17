@@ -1,0 +1,14 @@
+[Unit]
+Description=Prepare available Sendspin soundcard grants before container autostart
+Before=pve-guests.service
+After=systemd-udev-trigger.service
+ConditionPathExists=/etc/sendspin-usb-recovery.json
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/sendspin-usb-recovery boot
+TimeoutStartSec=30
+UMask=0077
+
+[Install]
+WantedBy=pve-guests.service

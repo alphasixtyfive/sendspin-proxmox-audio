@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.4 — 17 October 2026
+
+- Add optional host USB recovery using udev events, a systemd path unit and supported Proxmox/PipeWire commands.
+- Recreate only the affected physical output, keeping virtual rooms and player connections alive. Read adapter definitions and calibration from their existing owners.
+- Prepare available device grants before host autostart, and wait for idle streams before a required CT mapping refresh.
+- Respect maintenance stops and pending configuration, wait out short backup locks, and bound event retries.
+- Add recovery decision, failure and routing tests, with explicit installation and rollback instructions.
+
+The official player, audio packages and room-service policy are unchanged. This component runs on the Proxmox host and is not installed by the player installer.
+
 ## 0.1.3 — 17 October 2026
 
 - Add an optional isolated PipeWire routing/recovery test, including missing targets, default changes and virtual soundcard removal/return.

@@ -1,0 +1,24 @@
+{
+  "ctid": 321,
+  "user": "sendspin-cli",
+  "uid": 999,
+  "routing_file": "/etc/pipewire/pipewire.conf.d/60-zones.conf",
+  "cards": [
+    {
+      "usb_port": "1-2.1",
+      "vendor": "abcd",
+      "product": "1234",
+      "alsa_id": "CARD_A",
+      "node": "ca7_card_a",
+      "slots": ["dev0", "dev1"]
+    },
+    {
+      "usb_port": "1-2.2",
+      "vendor": "abcd",
+      "product": "1234",
+      "alsa_id": "CARD_B",
+      "node": "ca7_card_b",
+      "slots": ["dev2", "dev3"]
+    }
+  ]
+}

@@ -24,7 +24,7 @@ The installer uses the released [Sendspin CLI 0.4.0](https://github.com/Sendspin
 
 ## Keeping it running
 
-Players recover after unexpected exits. Audio-server recovery preserves running rooms; deliberate service stops stay effective. A missing or replugged USB card can still need checked device mappings and a coordinated restart. [Operations](docs/OPERATIONS.md) covers recovery, updates and rollback.
+Players recover after unexpected exits. Audio-server recovery preserves running rooms; deliberate service stops stay effective. Optional [USB recovery](docs/USB-RECOVERY.md) recreates a returned physical output while keeping the room players connected, and prepares available device grants before host autostart. [Operations](docs/OPERATIONS.md) covers updates, manual recovery and rollback.
 
 The [validation record](docs/VALIDATION.md) says what was actually tested, including the remaining hardware and long-term limits. [Migration](docs/MIGRATION.md) covers replacing an older setup.
 
