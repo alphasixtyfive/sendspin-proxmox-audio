@@ -1,0 +1,6 @@
+name = Zone 3 (pilot)
+output = pipewire:sendspin_zone-3
+port = 8933
+server = @SENDSPIN_SERVER_URL@
+log-level = info
+allow-unpaired = false

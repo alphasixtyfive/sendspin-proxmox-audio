@@ -1,0 +1,8 @@
+[Unit]
+Description=Stock Sendspin example zone players
+Wants=pipewire.service wireplumber.service
+After=pipewire.service wireplumber.service
+Wants=sendspin-zone@zone-1.service sendspin-zone@zone-2.service sendspin-zone@zone-3.service sendspin-zone@zone-4.service sendspin-zone@zone-5.service sendspin-zone@zone-6.service sendspin-zone@zone-7.service
+
+[Install]
+WantedBy=default.target

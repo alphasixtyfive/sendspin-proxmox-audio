@@ -1,0 +1,33 @@
+{
+  "sendspin_cli": {
+    "version": "0.4.0",
+    "revision": "45ff8b00e72ad1572a39e6e8ce21891748ab7d9e",
+    "repository": "https://github.com/Sendspin/sendspin-cpp-cli",
+    "asset": "sendspin-cli-0.4.0-linux-x86_64.tar.gz",
+    "sha256": "40efcab39ef303d026d8880ad1ada7b53b29e806114ae3744f9ed33daee0c5d9",
+    "binary_sha256": "350b891ed3f11b73cf428cb7dc8bc8a9dd809892515c69fb2bca6724867cda7b"
+  },
+  "sendspin_core": {
+    "version": "0.9.5",
+    "revision": "b95cf854a784ed308b1f8fe9697f414b02768ddd",
+    "repository": "https://github.com/Sendspin/sendspin-cpp"
+  },
+  "configuration_source_baseline": {
+    "debian": "13 amd64",
+    "pipewire": "1.4.2",
+    "wireplumber": "0.5.8",
+    "policy": "Use normal distribution security updates; record actual package versions. These are audited config baselines, not apt holds.",
+    "hardware_configuration": "Stock context.objects ALSA playback adapters; distinct clock names; automatic WirePlumber ALSA monitor disabled; no host metadata mount.",
+    "host_kernel_reviewed": "7.0.14-19-pve",
+    "host_alsa_utils_reviewed": "1.2.14-2 official Debian binary",
+    "pipewire_package_reviewed": "1.4.2-1",
+    "wireplumber_package_reviewed": "0.5.8-2"
+  },
+  "status": "tested two-card seven-zone deployment configuration: cold/warm announcements, music interruption/resume, server reconnect, CT restart and isolated USB-audio driver reload passed; host boot, arbitrary replug, full restore and remaining negative-policy scenarios unproven",
+  "source_patches": [],
+  "reference_surrounding_environment": {
+    "proxmox_qemu_package": "11.0.3-4 official distributor package",
+    "home_assistant_audio": "2026.08.0 official release",
+    "policy": "Surrounding environment recorded for acceptance; CT audio uses host ALSA directly, without a QEMU or PulseAudio audio backend."
+  }
+}

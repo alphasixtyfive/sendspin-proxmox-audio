@@ -1,0 +1,25 @@
+[Unit]
+Description=Stock Sendspin player for %i
+Documentation=https://github.com/Sendspin/sendspin-cpp-cli
+Wants=pipewire.service wireplumber.service
+After=pipewire.service wireplumber.service
+PartOf=sendspin-zones.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+Environment=XDG_RUNTIME_DIR=%t
+Environment=PIPEWIRE_REMOTE=pipewire-0
+ExecStart=/usr/local/bin/sendspin-cli --config /etc/sendspin-zones/%i.conf --state-dir %S/sendspin-zones/%i --control-socket %t/sendspin-zones/%i/control.sock
+RuntimeDirectory=sendspin-zones/%i
+RuntimeDirectoryMode=0700
+StateDirectory=sendspin-zones/%i
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=yes
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=15s
+
+[Install]
+WantedBy=sendspin-zones.target

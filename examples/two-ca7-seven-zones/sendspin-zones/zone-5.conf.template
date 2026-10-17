@@ -1,0 +1,6 @@
+name = Zone 5 (pilot)
+output = pipewire:sendspin_zone-5
+port = 8935
+server = @SENDSPIN_SERVER_URL@
+log-level = info
+allow-unpaired = false

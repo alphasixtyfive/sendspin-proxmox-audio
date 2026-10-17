@@ -1,0 +1,13 @@
+/local/
+/backups/
+/downloads/
+/build/
+*.tar.gz
+*.deb
+*.log
+*.sock
+*.key
+*.pem
+*.state
+state
+__pycache__/
