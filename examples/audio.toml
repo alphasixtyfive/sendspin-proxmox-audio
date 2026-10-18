@@ -1,0 +1,22 @@
+# Stable keys identify devices and player state. Rename the displayed name freely;
+# keep a zone key when moving it to another socket or USB card.
+version = 1
+server = "ws://ma.example.invalid:8927/sendspin"
+
+[devices.a]
+profile = "ca7"
+alsa_id = "CARD_A"
+
+[devices.b]
+profile = "ca7"
+alsa_id = "CARD_B"
+
+# Socket names: front, surround, side, center_sub.
+[zones]
+study      = { name = "Study",      device = "a", output = "front",      port = 8931 }
+guest-room = { name = "Guest room", device = "a", output = "surround",   port = 8932 }
+kids-room  = { name = "Kids room",  device = "a", output = "side",       port = 8933 }
+bedroom    = { name = "Bedroom",    device = "a", output = "center_sub", port = 8934 }
+lounge     = { name = "Lounge",     device = "b", output = "front",      port = 8935 }
+dining-room= { name = "Dining room",device = "b", output = "center_sub", port = 8936 }
+kitchen    = { name = "Kitchen",    device = "b", output = "surround",   port = 8937 }

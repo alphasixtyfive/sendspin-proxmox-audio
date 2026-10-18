@@ -1,5 +1,13 @@
 # Acceptance record
 
+## Single-configuration import — 18 October 2026
+
+The [TOML renderer](CONFIGURATION.md) passed 80 Linux source tests, including unknown/duplicate input, conflicting outputs/ports/identities, disabled zones, stable state keys across rename/move, optional two-card recovery-map generation, deterministic staging, existing/symlink destination refusal and sanitized parse errors. Repository hygiene and installer shell checks passed as well.
+
+On the reference installation, 31 silent checks passed: the stock PipeWire parser found equivalent routing, physical adapters, client rules and fixed native policy; player configs and service policy matched; target dependencies/membership matched apart from its display description; the host recovery map matched. Existing file hashes, host ID rules, recovery executable and all seven player PIDs stayed unchanged. A fresh 57-check HA/MA comparison was unchanged. The generated files were staged only; this does not claim activation, recovery or acoustic acceptance of a newly installed configuration.
+
+## Native deployment
+
 **Tested deployment configuration, 17 October 2026; broader acceptance remains qualified.** The reference installation uses two Cubilux CA7 interfaces and seven independent stereo zones on an unprivileged Debian 13 amd64 CT. The unchanged official CLI 0.4.0/core 0.9.5 binary hash matches upstream; PipeWire 1.4.2/WirePlumber 0.5.8 are distribution packages. Public examples keep generic names/placeholders and no private identities, addresses, levels or port paths.
 
 Passed on that installation:

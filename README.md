@@ -18,7 +18,7 @@ Start with [fast rollout](docs/ROLLOUT.md) for a restore or a new installation. 
 
 1. Read [device access and security](docs/SECURITY.md).
 2. Follow [setup](docs/SETUP.md) for a dedicated Debian 13 container.
-3. Adapt the [seven-room example](examples/two-ca7-seven-zones) to your cards and wiring.
+3. Edit [one configuration](docs/CONFIGURATION.md) for your cards and room sockets, then render and review the native files.
 4. Pair the players, check every output and run the [playback checks](docs/VALIDATION.md).
 5. Back up the private player state and [host audio configuration](docs/HOST-AUDIO.md).
 

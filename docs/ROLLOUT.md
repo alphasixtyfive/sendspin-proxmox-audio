@@ -23,7 +23,7 @@ systemctl enable sendspin-usb-prepare.service
 ## Build a new installation
 
 ```sh
-git clone --branch v0.1.5 --depth 1 \
+git clone --branch v0.1.6 --depth 1 \
   https://github.com/alphasixtyfive/sendspin-proxmox-audio.git
 cd sendspin-proxmox-audio
 python3 scripts/check.py
@@ -35,7 +35,7 @@ Follow these steps in order; commands and configuration destinations live in the
 | --- | --- | --- |
 | 1 | Create a dedicated unprivileged Debian 13 amd64 CT; inspect native hardware ownership and narrow grants. | [Security](SECURITY.md), [host audio](HOST-AUDIO.md) |
 | 2 | Install stock packages, the persistent audio account and verified official CLI. Disable CT ALSA restoration before granting control nodes. | [Setup 1](SETUP.md#1-base-and-account) |
-| 3 | Adapt the seven-zone example's physical IDs, server, exact channel pairs and target names. Install its native configuration and user units. | [Setup 2](SETUP.md#2-make-explicit-local-configuration) |
+| 3 | Edit one private TOML for devices/rooms, render and review its native files, then install with explicit ownership. | [Configuration](CONFIGURATION.md), [setup 2](SETUP.md#2-make-explicit-local-configuration) |
 | 4 | Start the stock audio session and one pilot player; pair through MA, then enable the accepted room target and CT onboot. | [Setup 3–5](SETUP.md#3-start-native-services-then-one-player) |
 | 5 | Add the optional, reviewed host USB recovery with a private map and retain one matching recovery set. | [USB recovery](USB-RECOVERY.md) |
 

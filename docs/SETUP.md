@@ -36,6 +36,8 @@ The installer copies only the verified binary and build information. It runs the
 
 ## 2. Make explicit local configuration
 
+For one editable topology, use [the TOML configuration and renderer](CONFIGURATION.md). It generates the native files below, the exact room target/client rule, and optionally the existing host recovery map. Review and install the staged paths using the ownership and maintenance rules in that guide. The hand-edited example below remains a reference for the native file format; choose one source of configuration.
+
 Copy the example to ignored `local/` and edit there. Never fill public examples with private values.
 
 ```sh

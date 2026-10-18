@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.6 — 18 October 2026
+
+- Describe devices, room sockets and optional existing host recovery in one private TOML.
+- Validate identities, allocations, ports and the supported hardware profile, then stage native configuration and a checksum manifest for review.
+- Keep player identities and native recovery policy unchanged. Rendering adds no service and never applies changes or starts playback.
+
 ## 0.1.5 — 17 October 2026
 
 - Add one fast rollout path for restoring a verified installation or building a new container.
