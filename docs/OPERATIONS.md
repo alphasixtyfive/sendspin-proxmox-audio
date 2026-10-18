@@ -16,6 +16,7 @@ Before upgrades or migration, stop the players and take an access-controlled CT 
 
 - `/var/lib/sendspin-cli/.local/state/sendspin-zones/`: identity keypairs, pairing records, remembered player levels/mute/delay. Losing a key makes a new endpoint.
 - Completed `/etc/sendspin-zones`, `/etc/pipewire`, `/etc/wireplumber` configuration and the account's user service files.
+- The private topology TOML, renderer release and verified stage manifest used to generate those files.
 - Installed binary checksum/version, distribution package versions, CT device mappings and the observed stable physical-port mapping.
 - The separately owned host ALSA calibration/state and standard restore configuration, if used. Preserve unrelated card settings.
 - Your MA player-ID mapping, groups and affected HA scripts/entities through their existing backup owners.
@@ -40,7 +41,7 @@ The optional [host USB recovery component](USB-RECOVERY.md) automates the usual 
 
 The two physical adapters are configured directly at PipeWire startup. Their `nofail` flag permits the server to start when a card is missing or cannot open; it does not schedule another creation attempt. After making the correctly identified hardware available, perform an ordinary `systemctl --user restart pipewire.service wireplumber.service`, then verify the exact physical nodes and links. The room units follow these explicit daemon restarts through `PartOf`. Preserve state directories and pairing. Coordinate the restart because it interrupts every zone in that shared graph.
 
-An ordinary ALSA XRUN/suspend recovery on an existing handle differs from USB removal/rediscovery. Neither stock Sendspin's finite retries nor static adapter configuration establishes automatic recovery from every USB fault. If re-enumeration changes device minors, stop the CT, update its supported `devN` assignments after checking physical identity/exclusive ownership, and start it normally. A stable card ID selects the intended hardware; it does not update Proxmox node permissions. Test same-minor return, changed-minor return and absent-at-start separately. No script broadens permissions, changes other USB assignments, replays queues or installs a host watcher.
+An ordinary ALSA XRUN/suspend recovery on an existing handle differs from USB removal/rediscovery. Neither stock Sendspin's finite retries nor static adapter configuration establishes automatic recovery from every USB fault. If re-enumeration changes device minors, stop the CT, update its supported `devN` assignments after checking physical identity/exclusive ownership, and start it normally. A stable card ID selects the intended hardware; it does not update Proxmox node permissions. Test same-minor return, changed-minor return and absent-at-start separately. The player installer never broadens permissions, changes other USB assignments or replays queues. The optional host recovery component is a separate installation.
 
 
 ## Audio-server maintenance

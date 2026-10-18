@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parent.parent
 spec = importlib.util.spec_from_file_location("configure", ROOT / "scripts/configure.py")
@@ -29,9 +30,9 @@ class ConfigureTests(unittest.TestCase):
         self.assertEqual(len(files), 16)
         routes = files["ct/etc/pipewire/pipewire.conf.d/60-zones.conf"]
         self.assertEqual(routes.count('"libpipewire-module-loopback"'), 7)
-        self.assertEqual(routes.count('"node.dont-fallback" = true'), 7)
-        self.assertEqual(routes.count('"stream.dont-remix" = true'), 14)
-        self.assertIn('"audio.position" = [ "FC" "LFE" ]', routes)
+        self.assertEqual(routes.count('node.dont-fallback = true'), 7)
+        self.assertEqual(routes.count('stream.dont-remix = true'), 14)
+        self.assertIn('audio.position = [ FC LFE ]', routes)
         self.assertFalse(any("state" in p or "key" in p for p in files))
         target = files["ct/user/sendspin-zones.target"]
         for key in self.c["zones"]:
@@ -125,6 +126,50 @@ class ConfigureTests(unittest.TestCase):
                 configure.stage(self.c, output)
             self.assertEqual((output / "sentinel").read_text(), "keep")
 
+    def test_verify_is_read_only_and_matches_every_staged_file(self):
+        with tempfile.TemporaryDirectory() as td:
+            stage = Path(td) / "stage"
+            manifest = configure.stage(self.c, stage)
+            before = {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in stage.rglob("*") if p.is_file()}
+            self.assertEqual(configure.verify(self.c, stage), manifest)
+            self.assertEqual(before, {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in before})
+
+    def test_verify_rejects_stale_partial_extra_and_tampered_stages(self):
+        with tempfile.TemporaryDirectory() as td:
+            for case in ["missing", "extra", "content", "manifest", "configuration"]:
+                with self.subTest(case=case):
+                    stage = Path(td) / case
+                    configure.stage(self.c, stage)
+                    player = stage / "ct/etc/sendspin-zones/study.conf"
+                    config = copy.deepcopy(self.c)
+                    if case == "missing": player.unlink()
+                    elif case == "extra": (stage / "unreviewed.conf").write_text("extra")
+                    elif case == "content": player.write_text("changed")
+                    elif case == "manifest": (stage / "manifest.json").write_text("{}")
+                    else: config["zones"]["study"]["name"] = "Office"
+                    with self.assertRaises(ValueError):
+                        configure.verify(config, stage)
+
+    def test_interrupted_stage_cannot_pass_verification(self):
+        with tempfile.TemporaryDirectory() as td:
+            stage = Path(td) / "stage"
+            real_open = Path.open
+            def failing_open(path, *args, **kwargs):
+                if path == stage / "ct/etc/sendspin-zones/study.conf":
+                    raise OSError("simulated disk failure")
+                return real_open(path, *args, **kwargs)
+            with patch.object(Path, "open", new=failing_open):
+                with self.assertRaises(OSError): configure.stage(self.c, stage)
+            self.assertTrue(stage.is_dir())
+            self.assertFalse((stage / "manifest.json").exists())
+            with self.assertRaises(ValueError): configure.verify(self.c, stage)
+
+    def test_unicode_labels_are_utf8_in_native_and_player_files(self):
+        self.c["zones"]["study"]["name"] = "Büro 🎵"
+        files = configure.render(self.c)
+        self.assertIn('node.description = "Büro 🎵"', files["ct/etc/pipewire/pipewire.conf.d/60-zones.conf"])
+        self.assertIn("name = Büro 🎵", files["ct/etc/sendspin-zones/study.conf"])
+
     @unittest.skipIf(sys.platform == "win32", "unprivileged symlinks not always available")
     def test_refuses_symlink_destination(self):
         with tempfile.TemporaryDirectory() as td:
@@ -132,6 +177,20 @@ class ConfigureTests(unittest.TestCase):
             link.symlink_to(Path(td) / "missing", target_is_directory=True)
             with self.assertRaises(FileExistsError):
                 configure.stage(self.c, link)
+            with self.assertRaises(ValueError):
+                configure.verify(self.c, link)
+
+    @unittest.skipIf(sys.platform == "win32", "unprivileged symlinks not always available")
+    def test_verify_rejects_symlinked_file_and_directory(self):
+        with tempfile.TemporaryDirectory() as td:
+            for directory in [False, True]:
+                stage = Path(td) / str(directory)
+                configure.stage(self.c, stage)
+                target = stage / ("ct/user" if directory else "ct/etc/sendspin-zones/study.conf")
+                moved = Path(td) / ("original-" + str(directory))
+                target.rename(moved)
+                target.symlink_to(moved, target_is_directory=directory)
+                with self.assertRaises(ValueError): configure.verify(self.c, stage)
 
     def test_cli_rejects_duplicate_toml_keys_without_echoing_source(self):
         with tempfile.TemporaryDirectory() as td:

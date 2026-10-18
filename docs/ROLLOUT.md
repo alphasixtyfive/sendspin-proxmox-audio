@@ -23,7 +23,7 @@ systemctl enable sendspin-usb-prepare.service
 ## Build a new installation
 
 ```sh
-git clone --branch v0.1.6 --depth 1 \
+git clone --branch v0.1.7 --depth 1 \
   https://github.com/alphasixtyfive/sendspin-proxmox-audio.git
 cd sendspin-proxmox-audio
 python3 scripts/check.py

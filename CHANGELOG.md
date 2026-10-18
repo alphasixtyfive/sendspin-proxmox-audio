@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.7 — 18 October 2026
+
+- Fix generated routing syntax so the existing USB recovery reader can inspect it; add a cross-component regression test. Regenerate uninstalled v0.1.6 stages before use.
+- Add read-only stage verification against the current configuration, complete file inventory and manifest; reject stale, partial, modified or symlinked stages.
+- Keep Unicode labels as UTF-8, remove obsolete separate player/adapter/target templates, and use one setup path through the TOML renderer.
+
+Installed player binaries, native audio configuration and host recovery code are unchanged.
+
 ## 0.1.6 — 18 October 2026
 
 - Describe devices, room sockets and optional existing host recovery in one private TOML.

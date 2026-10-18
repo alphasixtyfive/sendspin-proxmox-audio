@@ -10,6 +10,9 @@ ROOT = Path(__file__).resolve().parent.parent
 spec = importlib.util.spec_from_file_location('usb_recovery', ROOT / 'scripts/usb-recovery.py')
 r = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(r)
+config_spec = importlib.util.spec_from_file_location('configure', ROOT / 'scripts/configure.py')
+configure = importlib.util.module_from_spec(config_spec)
+config_spec.loader.exec_module(configure)
 
 
 def config():
@@ -115,6 +118,16 @@ class PureTests(unittest.TestCase):
     def test_routes_derive_stereo_targets_from_existing_file(self):
         self.assertEqual(r.routes(ROUTING), [('one', 'playback.one', 'card_a', ['FL', 'FR']),
                                            ('two', 'playback.two', 'card_b', ['RL', 'RR'])])
+
+    def test_generated_routes_work_with_the_installed_recovery_reader(self):
+        c = configure.load(ROOT / 'examples/audio.toml')
+        c['layout']['sink_prefix'] = 'adopted_prefix-'
+        files = configure.render(c)
+        actual = r.routes(files['ct/etc/pipewire/pipewire.conf.d/60-zones.conf'])
+        expected = [('adopted_prefix-' + key, 'playback.adopted_prefix-' + key,
+                     c['devices'][z['device']]['node'], configure.OUTPUTS[z['output']])
+                    for key, z in c['zones'].items()]
+        self.assertEqual(actual, expected)
 
     def test_missing_routes_and_duplicate_sinks_rejected(self):
         for text in ['', ROUTING.replace('node.name = "two"', 'node.name = "one"')]:

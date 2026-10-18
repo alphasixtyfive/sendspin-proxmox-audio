@@ -8,9 +8,12 @@ cp examples/audio.toml local/audio.toml
 # Edit local/audio.toml with the actual endpoint, persistent ALSA IDs and wiring.
 python3 scripts/configure.py check local/audio.toml
 python3 scripts/configure.py render local/audio.toml --output local/staged-01
+python3 scripts/configure.py verify local/audio.toml --output local/staged-01
 ```
 
-The output directory must not exist and its parent must exist. Rendering writes only that fresh directory. A failure or interruption may leave an incomplete stage: accept it only if the command succeeded and `manifest.json` contains all expected files and matching SHA256s. Review a new stage after each edit; a render never installs, starts, pairs, restarts or plays anything.
+The output directory must not exist and its parent must exist. Rendering writes only that fresh directory. `verify` is read-only: it regenerates the expected output from the current TOML and checkout, checks the exact file inventory/content and manifest, and rejects missing, extra, modified or symlinked entries. Run it before installation. A failed/interrupted render is incomplete; choose a new stage and verify it. Review a new stage after each edit; these commands never install, start, pair, restart or play anything.
+
+Regenerate stages made with v0.1.6: their PipeWire syntax parses correctly, but quoted property/channel names were incompatible with the existing host recovery reader. v0.1.7 emits the established native format and tests it with that reader. Existing live hand-written configuration is unaffected.
 
 ## Everyday edits
 

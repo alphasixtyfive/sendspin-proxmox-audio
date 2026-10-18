@@ -141,14 +141,15 @@ def validate(c):
 
 
 def spa(value, level=0):
-    """Emit PipeWire's native configuration syntax, quoting every string/key."""
+    """Keep native property keys/channel lists compatible with the recovery reader."""
     if type(value) is dict:
-        lines = [" " * (level + 2) + json.dumps(k) + " = " + spa(v, level + 2)
+        lines = [" " * (level + 2) + k + " = " + spa(v, level + 2)
                  for k, v in value.items()]
         return "{\n" + "\n".join(lines) + "\n" + " " * level + "}"
     if type(value) is list:
-        return "[ " + " ".join(spa(v, level) for v in value) + " ]"
-    return json.dumps(value, ensure_ascii=True)
+        return "[ " + " ".join(v if type(v) is str and re.fullmatch(r"[A-Za-z][A-Za-z0-9_.-]*", v)
+                               else spa(v, level) for v in value) + " ]"
+    return json.dumps(value, ensure_ascii=False)
 
 
 def native(values):
@@ -160,7 +161,7 @@ def render(c):
     files, modules, objects = {}, [], []
     zones = {k: z for k, z in c["zones"].items() if z.get("enabled", True)}
     prefix = c["layout"]["sink_prefix"]
-    for key, d in c["devices"].items():
+    for d in c["devices"].values():
         objects.append({"factory": "adapter", "args": {
             "factory.name": "api.alsa.pcm.sink", "node.name": d["node"],
             "node.description": d["description"], "media.class": "Audio/Sink",
@@ -219,30 +220,55 @@ def stage(c, destination):
     destination = Path(destination)
     # mkdir is exclusive: an existing directory, file or symlink is never reused.
     destination.mkdir(mode=0o700, parents=False, exist_ok=False)
-    manifest = {}
     for name, content in sorted(files.items()):
         path = destination / name
         path.parent.mkdir(parents=True, exist_ok=True)
         data = content.encode("utf-8")
         with path.open("xb") as stream:
             stream.write(data)
-        manifest[name] = hashlib.sha256(data).hexdigest()
+    manifest = fingerprints(files)
     (destination / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     return manifest
 
 
+def fingerprints(files):
+    return {name: hashlib.sha256(content.encode("utf-8")).hexdigest() for name, content in sorted(files.items())}
+
+
+def verify(c, destination):
+    """Compare a complete stage with this configuration and this checkout's policy."""
+    files = render(c)
+    destination = Path(destination)
+    require(destination.is_dir() and not destination.is_symlink(), "stage must be a real directory")
+    actual = set()
+    for path in destination.rglob("*"):
+        require(not path.is_symlink() and (path.is_file() or path.is_dir()), "unexpected stage entry")
+        if path.is_file():
+            actual.add(path.relative_to(destination).as_posix())
+    require(actual == set(files) | {"manifest.json"}, "stage has missing or extra files")
+    expected = fingerprints(files)
+    require(json.loads((destination / "manifest.json").read_text(encoding="utf-8")) == expected,
+            "stage manifest does not match configuration")
+    for name, content in files.items():
+        require((destination / name).read_bytes() == content.encode("utf-8"), "staged content does not match configuration")
+    return expected
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["check", "render"])
+    parser.add_argument("command", choices=["check", "render", "verify"])
     parser.add_argument("config", type=Path)
-    parser.add_argument("--output", type=Path, help="fresh staging directory; parent must exist")
+    parser.add_argument("--output", type=Path, help="stage directory; render requires a fresh destination")
     args = parser.parse_args()
     try:
-        require((args.command == "render") == (args.output is not None), "only render requires --output")
+        require((args.command != "check") == (args.output is not None), "render/verify require --output; check does not")
         config = load(args.config)
         if args.command == "render":
             manifest = stage(config, args.output)
             print(f"Staged {len(manifest)} native files; nothing installed or restarted.")
+        elif args.command == "verify":
+            verify(config, args.output)
+            print("Stage matches configuration; nothing installed or restarted.")
         else:
             print("Configuration valid; nothing changed.")
     except (ValueError, OSError) as error:

@@ -1,5 +1,11 @@
 # Acceptance record
 
+## Configuration reliability review — 18 October 2026
+
+v0.1.7 corrects a gap in the initial import checks: valid quoted PipeWire properties/channel names were incompatible with the existing recovery reader. That failure was reproduced with the installed reader; the corrected stage passed the same reader for all seven routes. No initial stage had been installed. Regenerate v0.1.6 stages before use.
+
+All 86 Linux source tests passed, including a renderer/recovery compatibility test and stage verification for partial, stale, modified, extra or symlinked output. Thirty-four silent native checks passed, including stock parser equivalence, UTF-8 labels and compatibility with the actual installed reader. Live files, seven player PIDs, host rules/map and recovery executable remained unchanged; 57 fresh HA/MA comparisons passed. No service was restarted and no generated file was installed. Existing acoustic/hardware acceptance and remaining gates below are unchanged.
+
 ## Single-configuration import — 18 October 2026
 
 The [TOML renderer](CONFIGURATION.md) passed 80 Linux source tests, including unknown/duplicate input, conflicting outputs/ports/identities, disabled zones, stable state keys across rename/move, optional two-card recovery-map generation, deterministic staging, existing/symlink destination refusal and sanitized parse errors. Repository hygiene and installer shell checks passed as well.

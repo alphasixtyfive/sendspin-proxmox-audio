@@ -11,7 +11,7 @@ Create the CT **without sound-device grants first**. Root inside the CT installs
 ```sh
 apt-get update
 apt-get install --no-install-recommends pipewire pipewire-bin libpipewire-0.3-modules \
-  libspa-0.2-modules wireplumber dbus-user-session libpam-systemd udev alsa-utils
+  libspa-0.2-modules wireplumber dbus-user-session libpam-systemd udev alsa-utils python3
 systemctl mask --now alsa-restore.service alsa-state.service
 install -d /etc/udev/rules.d
 ln -s /dev/null /etc/udev/rules.d/90-alsa-restore.rules
@@ -36,64 +36,48 @@ The installer copies only the verified binary and build information. It runs the
 
 ## 2. Make explicit local configuration
 
-For one editable topology, use [the TOML configuration and renderer](CONFIGURATION.md). It generates the native files below, the exact room target/client rule, and optionally the existing host recovery map. Review and install the staged paths using the ownership and maintenance rules in that guide. The hand-edited example below remains a reference for the native file format; choose one source of configuration.
-
-Copy the example to ignored `local/` and edit there. Never fill public examples with private values.
+Use [one private TOML](CONFIGURATION.md) for the MA endpoint, persistent card IDs, room sockets and optional existing host recovery map:
 
 ```sh
-cp -a examples/two-ca7-seven-zones local
+mkdir -p local
+cp examples/audio.toml local/audio.toml
+# Edit the private TOML with the actual endpoint, card IDs and wiring.
+python3 scripts/configure.py check local/audio.toml
+python3 scripts/configure.py render local/audio.toml --output local/staged-01
+python3 scripts/configure.py verify local/audio.toml --output local/staged-01
 ```
 
-Replace `@CARD_A_ALSA_ID@` and `@CARD_B_ALSA_ID@` in `pipewire.conf.d/61-ca7-physical.conf.template` with two distinct, persistent ALSA card IDs observed in `/proc/asound/cards` and `/sys/class/sound/cardN/id`. Numeric card indices can change. Identical serial numbers require a host-owned standard udev identity rule matched to the observed physical ports; keep that mapping and calibration in the host's existing configuration owner. Do not guess IDs or copy another household's port paths.
+Observe persistent ALSA IDs on the host through `/proc/asound/cards` and `/sys/class/sound/cardN/id`. Numeric indices can change; identical serials need a physical-port identity rule. [Host audio](HOST-AUDIO.md) owns identity, optional index allocation and fixed calibration. Verify the actual PCM0 channel map; center/sub must provide full-range stereo for a room. The CA7 headphone PCM1 is outside this profile. CLI 0.4 requires MA with aiosendspin 10+ encrypted rc1.
 
-Use the [host audio guide](HOST-AUDIO.md) to assess optional standard index allocation against the actual onboard/USB inventory. The tested 3/4 example is not a default for every machine. Stable physical card IDs remain authoritative; refresh specific Proxmox device mappings when numeric nodes change.
+The generated adapters use separate physical clocks, S16LE/eight channels/48kHz, no automatic ALSA monitoring and normal resampling. `nofail` permits startup without a card; [host recovery](USB-RECOVERY.md) handles return when installed. [Operations](OPERATIONS.md#replug-and-restart-limits) covers deliberate manual recovery.
 
-The physical nodes are stock PipeWire `context.objects` adapters opening only each named card's PCM0 playback path. They bypass automatic ALSA card enumeration and create eight-channel S16LE/48kHz outputs. The supplied WirePlumber config disables its automatic ALSA monitor, preventing competing hardware nodes. Keep the adapters' distinct `clock.name` values: named ALSA paths do not automatically provide numeric-card clock identities, and the two USB clocks must remain independent. Do not disable resampling. Verify raw ALSA channel order and driver map; do not copy a PulseAudio surround order blindly.
-
-Replace `@SENDSPIN_SERVER_URL@` in every player template with your verified MA Sendspin endpoint, for example `ws://ma.example.invalid:8927/sendspin`. Save completed files as `zone-N.conf`, without `.template`. The invalid example domain is not a working default. CLI 0.4 requires aiosendspin 10+ encrypted rc1; verify your MA build.
-
-CA7 also exposes a separate stereo-headphone PCM1. The explicit paths end in `,0`, selecting the eight-channel PCM0 playback device; no capture or headphone node is created. `flags = [ nofail ]` keeps PipeWire alive if a card cannot open at startup, but it does not schedule rediscovery. Make the card available and perform an ordinary PipeWire restart before retrying. See [operations](OPERATIONS.md#replug-and-restart-limits).
-
-The routing file creates seven generic stereo sinks across two cards. Edit its channel pairs/number of zones for your wiring; update the target and client fail-closed rule to the same exact zone set. No gain is configured here. Use an existing host ALSA owner/standard `alsactl` restoration for fixed hardware calibration; keep listening volume/mute in MA. Check physical outputs at safe levels before content. FC/LFE must be full-range stereo if used as a room pair.
-
-Install completed native files as root:
-
-- Completed `61-ca7-physical.conf.template` → `/etc/pipewire/pipewire.conf.d/61-ca7-physical.conf`, plus the other `pipewire.conf.d/*.conf` files
-- `client.conf.d/*.conf` → `/etc/pipewire/client.conf.d/`
-- `wireplumber.conf.d/51-manual-ca7.conf` → `/etc/wireplumber/wireplumber.conf.d/51-manual-ca7.conf`
-- Completed `zone-N.conf` → `/etc/sendspin-zones/`, readable by `sendspin-cli`
-- `systemd/sendspin-zone@.service` and your configured `sendspin-zones.target` → `/var/lib/sendspin-cli/.config/systemd/user/`, owned by `sendspin-cli`
-
-For the player configuration and user units, these root commands set explicit access without changing an existing home recursively:
+For a fresh installation, review the stage and existing destination files before running these root commands inside the CT. For an existing installation, use the [maintenance procedure](CONFIGURATION.md#review-and-install-native-files) first, including drift review and obsolete instance/file removal. The host recovery map is installed separately on the host.
 
 ```sh
+audio_stage=local/staged-01
+python3 scripts/configure.py verify local/audio.toml --output "$audio_stage"
+for folder in pipewire/pipewire.conf.d pipewire/client.conf.d wireplumber/wireplumber.conf.d; do
+  install -d -o root -g root -m 0755 "/etc/$folder"
+  install -o root -g root -m 0644 "$audio_stage/ct/etc/$folder/"*.conf "/etc/$folder/"
+done
 install -d -o root -g sendspin-cli -m 0750 /etc/sendspin-zones
-install -o root -g sendspin-cli -m 0640 local/sendspin-zones/zone-*.conf /etc/sendspin-zones/
+install -o root -g sendspin-cli -m 0640 "$audio_stage/ct/etc/sendspin-zones/"*.conf /etc/sendspin-zones/
 install -d -o sendspin-cli -g sendspin-cli -m 0700 \
   /var/lib/sendspin-cli/.config /var/lib/sendspin-cli/.config/systemd \
   /var/lib/sendspin-cli/.config/systemd/user
 install -o sendspin-cli -g sendspin-cli -m 0644 \
-  systemd/sendspin-zone@.service local/sendspin-zones.target \
+  "$audio_stage/ct/user/sendspin-zone@.service" "$audio_stage/ct/user/sendspin-zones.target" \
   /var/lib/sendspin-cli/.config/systemd/user/
-```
-
-On Debian 13's systemd 257, install the two audio-service drop-ins as well:
-
-```sh
 for daemon in pipewire wireplumber; do
   install -d -o sendspin-cli -g sendspin-cli -m 0700 \
     "/var/lib/sendspin-cli/.config/systemd/user/$daemon.service.d"
   install -o sendspin-cli -g sendspin-cli -m 0644 \
-    "systemd/$daemon.service.d/50-direct-restart.conf" \
+    "$audio_stage/ct/user/$daemon.service.d/50-direct-restart.conf" \
     "/var/lib/sendspin-cli/.config/systemd/user/$daemon.service.d/"
 done
 ```
 
-These use systemd's `RestartMode=direct` for automatic daemon recovery. Without it, a transient daemon crash can stop the room services through `PartOf`, leaving them stopped after the daemon returns. Explicit stops and restarts still propagate. Check the loaded `RestartMode` for both services after `daemon-reload`; both must say `direct`. This setup targets Debian 13; don't copy this policy to an older systemd without checking support and behavior.
-
-Inspect existing files and directory owners before running these commands. The zone configuration directory needs traversal permission as well as readable files; root-owned mode 0600 files will prevent the player from starting.
-
-Refuse activation if any `@...@` marker remains. Client rules are loaded by each player process when connecting; restart players after changing those rules, not just the daemon. They restrict explicit targets from falling back/moving to another room. Loopback playback halves separately wait/relink to their own physical target.
+The user drop-ins set `RestartMode=direct` on Debian 13/systemd 257, preserving dependent players during automatic audio-daemon recovery. Explicit stops/restarts still propagate. Check both loaded values after `daemon-reload`. Player configs need directory traversal and group read access; root-only files prevent startup. Client rules load in each player process: changing them requires player restarts as well as any required graph restart.
 
 ## 3. Start native services, then one player
 
@@ -119,8 +103,8 @@ Use `as_audio` for `wpctl status`, `sendspin-cli -l` and the following user comm
 
 ```sh
 as_audio systemd-analyze --user verify /var/lib/sendspin-cli/.config/systemd/user/sendspin-zone@.service
-as_audio systemctl --user start sendspin-zone@zone-1.service
-as_audio sendspin-cli status --control-socket "$audio_runtime/sendspin-zones/zone-1/control.sock"
+as_audio systemctl --user start sendspin-zone@study.service
+as_audio sendspin-cli status --control-socket "$audio_runtime/sendspin-zones/study/control.sock"
 ```
 
 Check exact native outputs, distinct physical clocks, channel routes, service identity and no competing renderer before audio. Adapter creation probes the selected PCM's formats; starting PipeWire is an intentional hardware-initialization boundary. Pair this one endpoint before starting more. Only after acceptance start/enable `sendspin-zones.target` for all configured instances. No script starts content or migrates MA entities.
