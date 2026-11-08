@@ -140,12 +140,29 @@ class PureTests(unittest.TestCase):
             c = config(); path.write_text(json.dumps(c))
             with patch.object(r, 'secure'):
                 self.assertEqual(r.load_config(path), c)
-                for key, value in [('ctid', '321'), ('user', 'root;anything'), ('uid', 0)]:
+                for key, value in [('ctid', '321'), ('user', 'root;anything'), ('user', 'root'), ('uid', 0)]:
                     bad = {**c, key: value}; path.write_text(json.dumps(bad))
                     with self.assertRaises(RuntimeError): r.load_config(path)
                 c['cards'][1]['usb_port'] = c['cards'][0]['usb_port']
                 path.write_text(json.dumps(c))
                 with self.assertRaises(RuntimeError): r.load_config(path)
+
+    def test_malformed_config_shapes_and_string_fields_fail_cleanly(self):
+        candidates = [None, [], 1, 'config']
+        for value in [None, [], 1, False]:
+            for key in ['user', 'routing_file', 'calibration_file']:
+                candidates.append({**config(), key: value})
+            for key in ['usb_port', 'vendor', 'product', 'alsa_id', 'node', 'slots']:
+                c = config(); c['cards'][0][key] = value; candidates.append(c)
+            c = config(); c['cards'][0] = value; candidates.append(c)
+            c = config(); c['cards'][0]['slots'][0] = value; candidates.append(c)
+            candidates.append({**config(), 'idle_gains': [value]})
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / 'config.json'
+            for i, candidate in enumerate(candidates):
+                path.write_text(json.dumps(candidate))
+                with self.subTest(case=i), patch.object(r, 'secure'), self.assertRaises(RuntimeError):
+                    r.load_config(path)
 
     def test_udev_rule_only_queues_events_for_configured_ports(self):
         text = r.rules(config())
@@ -163,7 +180,10 @@ class PureTests(unittest.TestCase):
     def test_stream_status_requires_paired_connection(self):
         self.assertTrue(r.stream_idle('trust: paired\nstream: idle\nprivate: ignored\n'))
         self.assertFalse(r.stream_idle('trust: paired\nstream: receiving\n'))
-        for text in ['trust: not connected\nstream: idle\n', 'trust: paired\n', 'stream: idle\n']:
+        for text in ['trust: not connected\nstream: idle\n', 'trust: paired\n', 'stream: idle\n',
+                     'trust: paired\nstream: receiving\nstream: idle\n',
+                     'trust: not connected\ntrust: paired\nstream: idle\n',
+                     'trust: paired\nstream: idle\nstream: idle\n']:
             with self.subTest(text=text), self.assertRaises(RuntimeError): r.stream_idle(text)
 
     def test_idle_wait_requires_two_idle_samples(self):
@@ -203,6 +223,90 @@ class PureTests(unittest.TestCase):
             sleep.assert_not_called()
 
 
+class IdleGainTests(unittest.TestCase):
+    def setUp(self):
+        guard = patch.object(r, 'secure')
+        guard.start(); self.addCleanup(guard.stop)
+
+    def policy(self):
+        return {**config(), 'calibration_file': '/etc/sendspin-alsa.state',
+                'idle_gains': [{'zone': 'guest', 'alsa_id': 'CARD_A', 'offset': 4, 'idle_gain': 0}]}
+
+    def test_policy_rejects_invalid_ranges_conflicts_and_unknown_cards(self):
+        with tempfile.TemporaryDirectory() as td, patch.object(r, 'secure'):
+            path = Path(td) / 'map.json'
+            good = self.policy(); path.write_text(json.dumps(good))
+            self.assertEqual(r.load_config(path), good)
+            changes = [{'offset': True}, {'offset': 3}, {'idle_gain': 88}, {'idle_gain': False},
+                       {'zone': '../outside'}, {'alsa_id': 'UNKNOWN'}]
+            for change in changes:
+                c = self.policy(); c['idle_gains'][0].update(change); path.write_text(json.dumps(c))
+                with self.subTest(change=change), self.assertRaises(RuntimeError): r.load_config(path)
+            good['idle_gains'] *= 2; path.write_text(json.dumps(good))
+            with self.assertRaises(RuntimeError): r.load_config(path)
+
+    def test_idle_receiving_and_stopped_verification_uses_calibration_and_card_lock(self):
+        selector = "iface=MIXER,name='PCM Playback Volume'"
+        expected = [(selector, ['66'] * 8), ("iface=MIXER,name='PCM Playback Switch'", ['on'])]
+        for mode in ['idle', 'active', 'stopped']:
+            values = ['66'] * 8
+            if mode == 'idle': values[4:6] = ['0', '0']
+            env = 'AUDIO_ACTIVE_LEFT=66 AUDIO_ACTIVE_RIGHT=66 AUDIO_IDLE_GAIN=0'
+            trace = 'gain-state: guest ' + mode + '\n  : values=' + ','.join(values) + '\n'
+            with self.subTest(mode=mode), patch.object(r, 'Path'), \
+                 patch.object(r, 'calibration', return_value=expected), \
+                 patch.object(r, 'verify_calibration') as verify, \
+                 patch.object(r, 'user', side_effect=[env, trace]) as user:
+                r.reconcile_gains(self.policy(), observed(b=None))
+                args = user.call_args.args
+                self.assertEqual(args[1:5], ('/usr/bin/flock', '--wait', '5', '/run/user/999/sendspin-hardware-CARD_A.lock'))
+                script = args[-1]
+                self.assertIn("value=,,,,66,66", script)
+                self.assertIn("value=,,,,0,0", script)
+                self.assertIn('inactive|failed)', script)
+                self.assertIn('trust: paired\nstream: receiving', script)
+                self.assertNotIn('restart', script)
+                self.assertNotIn('start ', script)
+                verify.assert_called_once_with('CARD_A', expected[1:])
+
+    def test_stale_rendered_calibration_fails_before_hardware_write(self):
+        with patch.object(r, 'Path'), \
+             patch.object(r, 'calibration', return_value=[("iface=MIXER,name='PCM Playback Volume'", ['66'] * 8)]), \
+             patch.object(r, 'user', return_value='AUDIO_ACTIVE_LEFT=65 AUDIO_ACTIVE_RIGHT=66 AUDIO_IDLE_GAIN=0') as user:
+            with self.assertRaisesRegex(RuntimeError, 'regenerate'):
+                r.reconcile_gains(self.policy(), observed(b=None))
+            self.assertEqual(user.call_count, 1)
+
+    def test_stream_hook_during_restore_defers_only_speaker_verification_to_card_lock(self):
+        expected = [("iface=MIXER,name='PCM Playback Volume'", ['66'] * 8),
+                    ("iface=MIXER,name='PCM Playback Switch'", ['on'])]
+        with patch.object(r, 'Path'), patch.object(r, 'secure'), \
+             patch.object(r, 'calibration', return_value=expected), patch.object(r, 'run'), \
+             patch.object(r, 'verify_calibration') as verify:
+            r.restore_calibration('CARD_A', '/etc/sendspin-alsa.state', verify_speaker=False)
+            verify.assert_called_once_with('CARD_A', expected[1:])
+
+    def test_idle_policy_uses_fixed_source_and_normal_setup_retains_runtime_source(self):
+        self.assertEqual(r.calibration_path(self.policy()), Path('/etc/sendspin-alsa.state'))
+        self.assertEqual(r.calibration_path(config()), Path('/var/lib/alsa/asound.state'))
+
+    def test_explicit_fixed_calibration_is_passed_to_native_restore_without_store(self):
+        source = 'unchanged saved state'
+        with patch.object(Path, 'read_text', return_value=source), \
+             patch.object(r, 'calibration', return_value=[]), \
+             patch.object(r, 'verify_calibration'), patch.object(r, 'run') as run:
+            r.restore_calibration('CARD_A', state_file='/etc/sendspin-alsa.state')
+            run.assert_called_once_with(['alsactl', '-I', '-f', '/etc/sendspin-alsa.state', 'restore', 'CARD_A'])
+
+    def test_recovery_verifies_effective_policy_after_restoration(self):
+        env = 'AUDIO_ACTIVE_LEFT=66 AUDIO_ACTIVE_RIGHT=66 AUDIO_IDLE_GAIN=0'
+        with patch.object(r, 'Path'), \
+             patch.object(r, 'calibration', return_value=[("iface=MIXER,name='PCM Playback Volume'", ['66'] * 8)]), \
+             patch.object(r, 'user', side_effect=[env, 'gain-state: guest idle\n : values=66,66,66,66,66,66,66,66\n']):
+            with self.assertRaisesRegex(RuntimeError, 'effective speaker gain'):
+                r.reconcile_gains(self.policy(), observed(b=None))
+
+
 class RecoveryTests(unittest.TestCase):
     def setUp(self):
         self.c = config(); self.o = observed(); self.conf = conf_for(self.o)
@@ -213,6 +317,7 @@ class RecoveryTests(unittest.TestCase):
             return p.start()
         self.set_mock = set_mock
         set_mock('still_enabled')
+        set_mock('secure')
         self.config = set_mock('config', return_value=self.conf)
         self.run = set_mock('run', side_effect=self.command)
         self.inventory = set_mock('inventory', return_value=self.o)

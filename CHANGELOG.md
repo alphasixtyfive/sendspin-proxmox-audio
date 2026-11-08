@@ -1,5 +1,33 @@
 # Changelog
 
+## Unreleased
+
+- Reject malformed recovery maps and ambiguous paired stream status before
+  changing hardware. Keep calibration selection explicit at the restore boundary,
+  and separate generated hook text from staged files without changing native output.
+- Separate fixed host calibration from ALSA runtime autosave through an explicit
+  `host.calibration_file`, required for idle gain. Exports identify that source;
+  rendering rejects a runtime snapshot in its place. Retain the fixed source
+  when disabling policy. Normal ALSA services and unrelated cards are untouched.
+- Let asynchronous stream hooks wait for the shared card lock, avoiding lost
+  transitions under contention. Keep native unit pre/post waits bounded and
+  cover a lock held longer than the former two-second limit.
+
+- Add shared `[idle_gain]` over an explicit room set, or optional per-room
+  `idle_gain`, to the existing topology renderer. Generate
+  stock stream hooks and native unit drop-ins from a host calibration export;
+  retain normal listening-volume ownership and independent stereo calibration.
+- Use `AUDIO_*` calibration variables outside the stock hook runner's reserved
+  `SENDSPIN_*` namespace, and reject missing variables before a mixer write.
+- Extend existing USB recovery to reconcile and verify stream-owned hardware
+  gains under the same per-card lock, preserving deliberately stopped rooms.
+  Defer managed speaker verification until that lock so a stream-end hook during
+  calibration restore cannot cause a false normal-gain mismatch.
+- Validate sparse writes, concurrent native hooks, lifecycle and forced physical
+  adapter recovery on the reference setup without audible playback. Physical
+  replug, reboot and acoustic acceptance beyond the Guest pilot remain separate
+  gates. The official player binary and vendor source remain unchanged.
+
 ## 0.1.7 — 18 October 2026
 
 - Fix generated routing syntax so the existing USB recovery reader can inspect it; add a cross-component regression test. Regenerate uninstalled v0.1.6 stages before use.

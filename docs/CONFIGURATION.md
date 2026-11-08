@@ -65,6 +65,104 @@ slots = ["dev2", "dev3"]
 
 Merge these tables into the existing configuration; TOML rejects duplicate table definitions. Observe the real USB paths, account UID and narrow Proxmox grant slots. Host recovery supports exactly two CA7s/four distinct slots. VID/PID `0bda:4f25` comes from the reviewed profile. The renderer produces its existing JSON map; it does not create host identities, grants, udev rules, recovery units or calibration. Follow their existing [installation and maintenance procedure](USB-RECOVERY.md#install-deliberately) when adopting the map. Moving a USB plug or replacing a card also needs the host-owned identity rule reviewed; changing a label alone cannot assign hardware.
 
+## Optional idle hardware gain
+
+For one shared setting over an explicitly selected set of rooms:
+
+```toml
+[idle_gain]
+raw = 0
+zones = ["study", "guest-room"]
+```
+
+Changing `raw` changes that whole set when the regenerated native files are
+installed. Omit the table to disable the shared policy. Normal calibration is
+still specific to each room/channel. A zone cannot belong to both this shared
+policy and an explicit per-room policy below.
+
+Add `idle_gain = 0` to a room to attenuate only its physical stereo pair while
+the stock Sendspin player is idle. Omit the setting to keep normal gain. Values
+are CA7 raw 0-87, limited to the quieter of that pair's calibrated values. Raw 0
+is the advertised minimum, not power-off or guaranteed silence. MA still owns
+listening volume, mute, queues and announcement restoration.
+
+This option requires the host table and the matching recovery code from this
+checkout. Point the host table at a root-owned fixed calibration file:
+
+```toml
+[host]
+ctid = 123
+user = "sendspin-cli"
+uid = 999
+calibration_file = "/etc/sendspin-alsa.state"
+```
+
+Merge this into the existing host table. Populate the file from verified normal
+saved calibration for the configured cards, using ALSA's state format and root
+0600 permissions. Do not snapshot current attenuated values. Keep this file in
+the host companion backup. Standard ALSA services can save live mixer levels to
+`/var/lib/alsa/asound.state`, including on shutdown, so that runtime file cannot
+also own fixed calibration for idle attenuation. Normal ALSA autosave and
+unrelated cards remain unchanged. Retain `calibration_file` even when disabling
+idle gain so fixed calibration ownership does not silently switch back.
+
+Export normal gain read-only using the existing component:
+
+```sh
+/usr/local/libexec/sendspin-usb-recovery export-calibration --calibration-file /etc/sendspin-alsa.state > /root/audio-calibration.json
+```
+
+Supply that private export when staging and verifying:
+
+```sh
+python3 scripts/configure.py render local/audio.toml --calibration local/audio-calibration.json --output local/staged-02
+python3 scripts/configure.py verify local/audio.toml --calibration local/audio-calibration.json --output local/staged-02
+```
+
+The export is derived evidence, not another manually maintained calibration.
+The configured fixed host file remains the owner. After a deliberate
+calibration change, re-export and regenerate/install affected native files;
+recovery rejects stale rendered active gains instead of guessing.
+
+The renderer generates stock `hook-start`/`hook-stop` commands, a native
+`60-idle-gain.conf` drop-in per enabled room and policy in the existing recovery
+map. No extra installed helper, service, watcher or HA entity is needed. Start
+initializes idle gain; service exit restores calibration. A stream restores both
+calibrated channels, including unequal left/right values. Hooks execute
+asynchronously: verify first-note and announcement/resume listening at a safe
+level rather than assuming sample-perfect onset.
+
+Generated calibration variables use `AUDIO_*`. The stock CLI deliberately
+removes inherited `SENDSPIN_*` variables from hook environments, reserving that
+namespace for its own event metadata. Hook parameter expansion fails explicitly
+if a gain variable is absent; a successful no-op sparse write is not acceptance.
+
+Writes use the named eight-channel PCM Playback Volume control with sparse
+values under one per-card `flock`, preserving other rooms. This follows the
+[ALSA control parser's native empty-field handling](https://github.com/alsa-project/alsa-lib/blob/v1.2.14/src/control/ctlparse.c#L349).
+It also avoids ambiguous simple-mixer channel labels. The reviewed CA7 profile
+owns offsets 0/2/4/6 for front/center_sub/surround/side. Verify actual hardware
+before replacement; do not apply this profile to another DAC.
+
+Asynchronous stream hooks wait for the card lock rather than dropping a
+transition after a short timeout. Systemd initialization/exit keeps bounded
+lock waits. This prevents contention from leaving an entire stream attenuated;
+it does not make asynchronous hooks a sample-perfect startup barrier.
+
+During USB recovery, the existing component restores host calibration, then
+reads each participating room's paired stream state and reapplies idle or
+normal gain under the same card lock. It verifies effective speaker values and
+all other saved controls. Receiving rooms retain normal gain, deliberately
+stopped rooms stay stopped at normal gain, absent cards are skipped, and an
+unknown/disconnected state defers convergence. Ordinary boot restores normal
+calibration before CT start; native room initialization applies idle gain.
+
+Install the updated recovery code and generated map together during the
+existing maintenance procedure. When removing `idle_gain`, also remove only
+that room's generated drop-in and old hooks, restore its calibrated pair,
+reload units and restart the affected instance. A stage alone cannot remove
+obsolete live files. Retain paired state and test idle/stream/recovery behavior.
+
 ## Review and install native files
 
 | Staged tree | Destination |

@@ -13,6 +13,7 @@ from urllib.parse import urlsplit
 ROOT = Path(__file__).resolve().parent.parent
 OUTPUTS = {"front": ["FL", "FR"], "surround": ["RL", "RR"],
            "side": ["SL", "SR"], "center_sub": ["FC", "LFE"]}
+CA7_OFFSETS = {"front": 0, "center_sub": 2, "surround": 4, "side": 6}
 
 
 def require(ok, message):
@@ -53,7 +54,7 @@ def load(path):
 
 
 def validate(c):
-    table(c, {"version", "server", "layout", "devices", "zones", "host"},
+    table(c, {"version", "server", "layout", "devices", "zones", "host", "idle_gain"},
           {"version", "server", "devices", "zones"}, "configuration")
     number(c["version"], 1, 1, "version")
     server = c["server"]
@@ -100,7 +101,7 @@ def validate(c):
     active, sockets, ports, nodes = [], [], [], []
     for key, z in zones.items():
         text(key, r"[a-z][a-z0-9-]{0,47}", "zone key")
-        table(z, {"name", "player_name", "device", "output", "port", "enabled"},
+        table(z, {"name", "player_name", "device", "output", "port", "enabled", "idle_gain"},
               {"name", "device", "output", "port"}, "zone " + key)
         label(z["name"], "zone name")
         label(z.get("player_name", z["name"]), "player name")
@@ -108,6 +109,9 @@ def validate(c):
         require(type(z["device"]) is str and z["device"] in normalized, "unknown zone device")
         require(type(z["output"]) is str and z["output"] in OUTPUTS, "unknown stereo output")
         number(z["port"], 1024, 65535, "player port")
+        if "idle_gain" in z:
+            number(z["idle_gain"], 0, 87, "idle gain")
+            require(type(c.get('host')) is dict and "calibration_file" in c['host'], "idle gain requires fixed host calibration_file")
         if z.get("enabled", True):
             active.append(key)
             sockets.append((z["device"], z["output"]))
@@ -117,9 +121,20 @@ def validate(c):
     unique(sockets, "enabled device/output allocation")
     unique(ports, "enabled player port")
     unique(nodes + [d["node"] for d in normalized.values()], "PipeWire node")
+    if 'idle_gain' in c:
+        policy = c['idle_gain']
+        table(policy, {'raw', 'zones'}, {'raw', 'zones'}, 'shared idle gain')
+        number(policy['raw'], 0, 87, 'shared idle gain')
+        require(type(c.get('host')) is dict and 'calibration_file' in c['host'], 'idle gain requires fixed host calibration_file')
+        require(type(policy['zones']) is list and policy['zones'], 'shared idle gain needs zones')
+        require(all(type(k) is str and k in zones and 'idle_gain' not in zones[k]
+                    for k in policy['zones']), 'unknown zone or conflicting idle gain owner')
+        unique(policy['zones'], 'shared idle gain zone')
     if "host" in c:
         host = c["host"]
-        table(host, {"ctid", "user", "uid"}, {"ctid", "user", "uid"}, "host")
+        table(host, {"ctid", "user", "uid", "calibration_file"}, {"ctid", "user", "uid"}, "host")
+        if 'calibration_file' in host:
+            text(host['calibration_file'], r'/etc/(?:[A-Za-z0-9_-]+/)*[A-Za-z0-9_-]+\.state', 'fixed calibration file')
         number(host["ctid"], 100, 999999999, "CT ID")
         number(host["uid"], 1, 65533, "audio UID")
         text(host["user"], r"[a-z_][a-z0-9_-]{0,31}", "audio user")
@@ -156,10 +171,59 @@ def native(values):
     return "\n".join(k + " = " + spa(v) for k, v in values.items()) + "\n"
 
 
-def render(c):
+def gain_command(card, offset, left, right):
+    # ALSA's sparse control values preserve the other six channels under the card lock.
+    payload = "," * offset + left + "," + right
+    return ('/usr/bin/amixer -q -c ' + card
+            + ' cset "iface=MIXER,name=\'PCM Playback Volume\',index=0" "' + payload + '"')
+
+
+def gain_files(c, zones, saved):
+    hooks, files, policies = {}, {}, []
+    selected = {k: z for k, z in zones.items() if "idle_gain" in z}
+    if not selected:
+        return hooks, files, policies
+    table(saved, {"state_sha256", "cards", "source_file"}, {"state_sha256", "cards", "source_file"}, "saved calibration export")
+    require(saved['source_file'] == c['host']['calibration_file'], 'idle gain needs the configured fixed calibration, not ALSA runtime autosave')
+    text(saved["state_sha256"], r"[0-9a-f]{64}", "calibration fingerprint")
+    require(type(saved["cards"]) is dict, "invalid calibration cards")
+    for key, z in selected.items():
+        card = c["devices"][z["device"]]["alsa_id"]
+        values = saved["cards"].get(card)
+        require(type(values) is list and len(values) == 8, "need saved eight-channel calibration")
+        for v in values:
+            number(v, 0, 87, "calibrated gain")
+        offset = CA7_OFFSETS[z["output"]]
+        require(z["idle_gain"] <= min(values[offset:offset + 2]), "idle gain exceeds calibrated gain")
+        lock = f'/run/user/{c["host"]["uid"]}/sendspin-hardware-{card}.lock'
+        prefix = '/usr/bin/flock --wait 2 ' + lock + ' '
+        hook_prefix = '/usr/bin/flock ' + lock + ' '
+        active = gain_command(card, offset, '${AUDIO_ACTIVE_LEFT}', '${AUDIO_ACTIVE_RIGHT}')
+        idle = gain_command(card, offset, '${AUDIO_IDLE_GAIN}', '${AUDIO_IDLE_GAIN}')
+        # SENDSPIN_* belongs to the stock hook runner and is removed from inherited env.
+        active_hook = gain_command(card, offset, '${AUDIO_ACTIVE_LEFT:?}', '${AUDIO_ACTIVE_RIGHT:?}')
+        idle_hook = gain_command(card, offset, '${AUDIO_IDLE_GAIN:?}', '${AUDIO_IDLE_GAIN:?}')
+        hooks[key] = ('\nhook-start = ' + hook_prefix + active_hook + ' && echo "Hardware gain active"\n'
+                      + 'hook-stop = ' + hook_prefix + idle_hook + ' && echo "Hardware gain idle"\n')
+        files[f'ct/user/sendspin-zone@{key}.service.d/60-idle-gain.conf'] = (
+            '[Service]\n# Active gain derived from host calibration ' + saved['state_sha256'] + '\n'
+            + f'Environment=AUDIO_ACTIVE_LEFT={values[offset]}\n'
+            + f'Environment=AUDIO_ACTIVE_RIGHT={values[offset + 1]}\n'
+            + f'Environment=AUDIO_IDLE_GAIN={z["idle_gain"]}\n'
+            + 'ExecStartPre=-' + prefix + idle + '\n'
+            + 'ExecStopPost=-' + prefix + active + '\n')
+        policies.append({'zone': key, 'alsa_id': card, 'offset': offset, 'idle_gain': z['idle_gain']})
+    return hooks, files, policies
+
+
+def render(c, saved=None):
     c = validate(c)
-    files, modules, objects = {}, [], []
+    modules, objects = [], []
     zones = {k: z for k, z in c["zones"].items() if z.get("enabled", True)}
+    shared = c.get('idle_gain', {})
+    zones = {k: ({**z, 'idle_gain': shared['raw']} if k in shared.get('zones', []) else z)
+             for k, z in zones.items()}
+    hooks, files, policies = gain_files(c, zones, saved)
     prefix = c["layout"]["sink_prefix"]
     for d in c["devices"].values():
         objects.append({"factory": "adapter", "args": {
@@ -186,6 +250,7 @@ def render(c):
             "name = " + z.get("player_name", z["name"]) + "\noutput = pipewire:" + sink
             + "\nport = " + str(z["port"]) + "\nserver = " + c["server"]
             + "\nlog-level = info\nallow-unpaired = false\n")
+        files["ct/etc/sendspin-zones/" + key + ".conf"] += hooks.get(key, '')
     pw = "ct/etc/pipewire/pipewire.conf.d/"
     files[pw + c["layout"]["routing_file"]] = native({"context.modules": modules})
     files[pw + "61-ca7-physical.conf"] = native({"context.objects": objects})
@@ -211,12 +276,14 @@ def render(c):
                 "cards": [{"usb_port": d["usb_port"], "vendor": "0bda", "product": "4f25",
                            "alsa_id": d["alsa_id"], "node": d["node"], "slots": d["slots"]}
                           for d in c["devices"].values()]}
+        if policies:
+            host['idle_gains'] = policies
         files["host/etc/sendspin-usb-recovery.json"] = json.dumps(host, indent=2) + "\n"
     return files
 
 
-def stage(c, destination):
-    files = render(c)
+def stage(c, destination, saved=None):
+    files = render(c, saved)
     destination = Path(destination)
     # mkdir is exclusive: an existing directory, file or symlink is never reused.
     destination.mkdir(mode=0o700, parents=False, exist_ok=False)
@@ -235,9 +302,9 @@ def fingerprints(files):
     return {name: hashlib.sha256(content.encode("utf-8")).hexdigest() for name, content in sorted(files.items())}
 
 
-def verify(c, destination):
+def verify(c, destination, saved=None):
     """Compare a complete stage with this configuration and this checkout's policy."""
-    files = render(c)
+    files = render(c, saved)
     destination = Path(destination)
     require(destination.is_dir() and not destination.is_symlink(), "stage must be a real directory")
     actual = set()
@@ -259,15 +326,17 @@ def main():
     parser.add_argument("command", choices=["check", "render", "verify"])
     parser.add_argument("config", type=Path)
     parser.add_argument("--output", type=Path, help="stage directory; render requires a fresh destination")
+    parser.add_argument("--calibration", type=Path, help="read-only host export for enabled idle gains")
     args = parser.parse_args()
     try:
         require((args.command != "check") == (args.output is not None), "render/verify require --output; check does not")
         config = load(args.config)
+        saved = json.loads(args.calibration.read_text(encoding="utf-8")) if args.calibration else None
         if args.command == "render":
-            manifest = stage(config, args.output)
+            manifest = stage(config, args.output, saved)
             print(f"Staged {len(manifest)} native files; nothing installed or restarted.")
         elif args.command == "verify":
-            verify(config, args.output)
+            verify(config, args.output, saved)
             print("Stage matches configuration; nothing installed or restarted.")
         else:
             print("Configuration valid; nothing changed.")

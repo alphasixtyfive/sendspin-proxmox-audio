@@ -3,6 +3,7 @@
 
 import argparse
 import fcntl
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -21,6 +22,14 @@ DISABLED = Path('/etc/sendspin-usb-recovery.disabled')
 def require(ok, reason):
     if not ok:
         raise RuntimeError(reason)
+
+
+def table(value, allowed, required, reason):
+    require(type(value) is dict and required <= value.keys() <= allowed, reason)
+
+
+def matches(value, pattern):
+    return type(value) is str and re.fullmatch(pattern, value) is not None
 
 
 def secure(path, directory=False):
@@ -58,25 +67,41 @@ def read(name, default):
 def load_config(path=CONFIG):
     secure(path)
     c = json.loads(path.read_text())
-    require(set(c) == {'ctid', 'user', 'uid', 'routing_file', 'cards'}, 'unknown/missing config keys')
+    required = {'ctid', 'user', 'uid', 'routing_file', 'cards'}
+    table(c, required | {'idle_gains', 'calibration_file'}, required, 'unknown/missing config keys')
+    if 'calibration_file' in c:
+        require(matches(c['calibration_file'], r'/etc/(?:[A-Za-z0-9_-]+/)*[A-Za-z0-9_-]+\.state'), 'invalid fixed calibration file')
     require(type(c['ctid']) is int and 100 <= c['ctid'] <= 999999999, 'invalid CTID')
-    require(re.fullmatch(r'[a-z_][a-z0-9_-]{0,31}', c['user']) is not None, 'invalid user')
+    require(matches(c['user'], r'[a-z_][a-z0-9_-]{0,31}') and c['user'] != 'root', 'invalid unprivileged user')
     require(type(c['uid']) is int and 1 <= c['uid'] <= 65533, 'invalid audio UID')
-    require(re.fullmatch(r'/etc/pipewire/pipewire\.conf\.d/[a-zA-Z0-9_.-]+\.conf', c['routing_file'])
-            is not None, 'invalid routing file')
+    require(matches(c['routing_file'], r'/etc/pipewire/pipewire\.conf\.d/[a-zA-Z0-9_.-]+\.conf'), 'invalid routing file')
     require(isinstance(c['cards'], list) and len(c['cards']) == 2, 'exactly two cards required')
     slots, ids, ports, nodes = [], [], [], []
     for card in c['cards']:
-        require(set(card) == {'usb_port', 'vendor', 'product', 'alsa_id', 'node', 'slots'}, 'card config keys')
-        require(re.fullmatch(r'\d+-\d+(?:\.\d+)*', card['usb_port']) is not None, 'invalid physical port')
-        require(all(re.fullmatch(r'[0-9a-f]{4}', card[k]) for k in ['vendor', 'product']), 'invalid USB ID')
-        require(re.fullmatch(r'[A-Za-z][A-Za-z0-9_]{0,14}', card['alsa_id']) is not None, 'invalid ALSA ID')
-        require(re.fullmatch(r'[A-Za-z][A-Za-z0-9_.-]+', card['node']) is not None, 'invalid physical node')
+        keys = {'usb_port', 'vendor', 'product', 'alsa_id', 'node', 'slots'}
+        table(card, keys, keys, 'card config keys')
+        require(matches(card['usb_port'], r'\d+-\d+(?:\.\d+)*'), 'invalid physical port')
+        require(all(matches(card[k], r'[0-9a-f]{4}') for k in ['vendor', 'product']), 'invalid USB ID')
+        require(matches(card['alsa_id'], r'[A-Za-z][A-Za-z0-9_]{0,14}'), 'invalid ALSA ID')
+        require(matches(card['node'], r'[A-Za-z][A-Za-z0-9_.-]+'), 'invalid physical node')
         require(isinstance(card['slots'], list) and len(card['slots']) == 2
-                and all(re.fullmatch(r'dev[0-9]+', x) for x in card['slots']), 'invalid devN slots')
+                and all(matches(x, r'dev[0-9]+') for x in card['slots']), 'invalid devN slots')
         slots += card['slots']; ids.append(card['alsa_id']); ports.append(card['usb_port']); nodes.append(card['node'])
     require(len(set(slots)) == 4 and len(set(ids)) == len(set(ports)) == len(set(nodes)) == 2,
             'duplicate card identity/node/slot')
+    policies = c.get('idle_gains', [])
+    require(type(policies) is list, 'idle gains must be a list')
+    require(not policies or 'calibration_file' in c, 'idle gains require a fixed calibration file')
+    pairs, zones = set(), set()
+    for p in policies:
+        keys = {'zone', 'alsa_id', 'offset', 'idle_gain'}
+        table(p, keys, keys, 'idle gain keys')
+        require(matches(p['zone'], r'[a-z][a-z0-9-]{0,47}'), 'idle gain zone')
+        require(p['alsa_id'] in ids and type(p['offset']) is int and p['offset'] in {0, 2, 4, 6}, 'idle gain pair')
+        require(type(p['idle_gain']) is int and 0 <= p['idle_gain'] <= 87, 'idle gain range')
+        pair = (p['alsa_id'], p['offset'])
+        require(pair not in pairs and p['zone'] not in zones, 'duplicate idle gain pair/zone')
+        pairs.add(pair); zones.add(p['zone'])
     return c
 
 
@@ -246,15 +271,95 @@ def verify_calibration(ident, expected):
                 'saved/live mixer mismatch: ' + ident)
 
 
-def restore_calibration(ident):
-    path = Path('/var/lib/alsa/asound.state')
+def calibration_path(c):
+    return Path(c.get('calibration_file', '/var/lib/alsa/asound.state'))
+
+
+def restore_calibration(ident, state_file, *, verify_speaker=True):
+    path = Path(state_file)
     secure(path)
     source = path.read_text()
     expected = calibration(source, ident)
     # The existing host state file remains the sole gain owner; no init/default fallback.
-    run(['alsactl', '-I', 'restore', ident])
+    run(['alsactl', '-I', '-f', str(path), 'restore', ident])
     require(path.read_text() == source, 'saved mixer state changed during recovery')
+    if not verify_speaker:
+        # A stream hook may already have changed speaker gain after alsactl restored it.
+        # The later locked reconciliation verifies this stream-owned control.
+        selector, _ = speaker_gain(expected)
+        expected = [(s, v) for s, v in expected if s != selector]
     verify_calibration(ident, expected)
+
+
+def speaker_gain(expected):
+    matches = [(selector, values) for selector, values in expected
+               if selector in {"iface=MIXER,name='PCM Playback Volume'",
+                               "iface=MIXER,name='PCM Playback Volume',index=0"}]
+    require(len(matches) == 1 and len(matches[0][1]) == 8, 'need saved eight-channel speaker gain')
+    require(all(v.isdigit() and 0 <= int(v) <= 87 for v in matches[0][1]), 'invalid saved speaker gain')
+    return matches[0]
+
+
+def calibration_export(c, state_file=None):
+    path = Path(state_file) if state_file is not None else calibration_path(c)
+    secure(path)
+    source = path.read_bytes()
+    return {'source_file': str(path), 'state_sha256': hashlib.sha256(source).hexdigest(),
+            'cards': {card['alsa_id']: list(map(int, speaker_gain(calibration(source.decode(), card['alsa_id']))[1]))
+                      for card in c['cards']}}
+
+
+def reconcile_gains(c, observed):
+    """Reapply stream-owned attenuation under the same CT card lock as native hooks."""
+    path = calibration_path(c)
+    secure(path)
+    source = path.read_text()
+    for ident in observed:
+        expected = calibration(source, ident)
+        policies = [p for p in c.get('idle_gains', []) if p['alsa_id'] == ident]
+        if not policies:
+            verify_calibration(ident, expected)
+            continue
+        selector, normal = speaker_gain(expected)
+        script = []
+        for p in policies:
+            offset, zone = p['offset'], p['zone']
+            require(p['idle_gain'] <= min(map(int, normal[offset:offset + 2])), 'idle gain exceeds calibration')
+            socket = f"/run/user/{c['uid']}/sendspin-zones/{zone}/control.sock"
+            unit = 'sendspin-zone@' + zone + '.service'
+            env = dict(x.split('=', 1) for x in shlex.split(user(c, 'systemctl', '--user', 'show', unit,
+                                                               '--property=Environment', '--value')) if '=' in x)
+            require([env.get('AUDIO_ACTIVE_LEFT'), env.get('AUDIO_ACTIVE_RIGHT')] == normal[offset:offset + 2]
+                    and env.get('AUDIO_IDLE_GAIN') == str(p['idle_gain']),
+                    'rendered room gain differs from calibration/policy; regenerate configuration')
+            active = ',' * offset + ','.join(normal[offset:offset + 2])
+            idle = ',' * offset + ','.join([str(p['idle_gain'])] * 2)
+            script.extend([
+                'state=$(systemctl --user show ' + unit + ' --property=ActiveState --value)',
+                'case "$state" in',
+                'active) status=$(/usr/local/bin/sendspin-cli status --control-socket ' + socket
+                + " | sed -n '/^trust: /p;/^stream: /p')",
+                'case "$status" in',
+                "'trust: paired\nstream: idle') mode=idle; value=" + shlex.quote(idle) + ';;',
+                "'trust: paired\nstream: receiving') mode=active; value=" + shlex.quote(active) + ';;',
+                '*) exit 1;; esac;;',
+                'inactive|failed) mode=stopped; value=' + shlex.quote(active) + ';;',
+                '*) exit 1;; esac',
+                '/usr/bin/amixer -q -c ' + ident + ' cset ' + shlex.quote(selector) + ' "$value"',
+                'printf "gain-state: ' + zone + ' %s\\n" "$mode"'])
+        script.append('/usr/bin/amixer -c ' + ident + ' cget ' + shlex.quote(selector))
+        result = user(c, '/usr/bin/flock', '--wait', '5',
+                      f"/run/user/{c['uid']}/sendspin-hardware-{ident}.lock",
+                      '/bin/bash', '-euo', 'pipefail', '-c', '\n'.join(script))
+        modes = dict(re.findall(r'(?m)^gain-state: ([a-z0-9-]+) (idle|active|stopped)$', result))
+        require(set(modes) == {p['zone'] for p in policies}, 'missing room gain verification')
+        effective = normal.copy()
+        for p in policies:
+            if modes[p['zone']] == 'idle':
+                effective[p['offset']:p['offset'] + 2] = [str(p['idle_gain'])] * 2
+        actual = re.search(r'(?m)^\s*: values=(.*)$', result)
+        require(actual is not None and actual[1].strip().split(',') == effective, 'effective speaker gain mismatch')
+        verify_calibration(ident, [(s, v) for s, v in expected if s != selector])
 
 
 def service_states(c):
@@ -322,8 +427,12 @@ def refresh_physical(c, observed, previous, force=False):
 
 def stream_idle(text):
     # Discard all other status lines: status can also contain private pairing information.
-    fields = {key: value for key, value in (line.split(': ', 1) for line in text.splitlines()
-              if line.startswith(('trust: ', 'stream: ')))}
+    fields = {}
+    for line in text.splitlines():
+        if line.startswith(('trust: ', 'stream: ')):
+            key, value = line.split(': ', 1)
+            require(key not in fields, 'ambiguous paired stream status')
+            fields[key] = value
     require(fields.get('trust') == 'paired' and fields.get('stream') in {'idle', 'receiving'},
             'cannot establish paired stream status')
     return fields['stream'] == 'idle'
@@ -460,7 +569,8 @@ def recover(c, boot=False, force=False):
         require(len(expected_routes) == len(target_rooms(c)), 'target rooms/routing count mismatch')
     for ident in observed:
         if boot or force or previous is None or previous.get(ident) != observed[ident]:
-            restore_calibration(ident)
+            managed = any(p['alsa_id'] == ident for p in c.get('idle_gains', []))
+            restore_calibration(ident, verify_speaker=boot or not managed, state_file=calibration_path(c))
     require(inventory(c) == observed, 'hardware changed during calibration')
     if boot:
         apply_grants(c, conf, desired)
@@ -503,8 +613,7 @@ def recover(c, boot=False, force=False):
                             for x in participating | {'pipewire.service', 'wireplumber.service'}),
                         'audio daemon/player process changed during adapter refresh')
             verify_graph(c, observed, expected_routes)
-            for ident in observed:
-                verify_calibration(ident, calibration(Path('/var/lib/alsa/asound.state').read_text(), ident))
+            reconcile_gains(c, observed)
             break
         except RuntimeError as exc:
             last = exc; time.sleep(1)
@@ -536,8 +645,10 @@ def apply_grants(c, before, desired):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('mode', choices=['event', 'reconcile', 'recover', 'boot', 'check', 'rules'])
+    parser.add_argument('mode', choices=['event', 'reconcile', 'recover', 'boot', 'check', 'rules', 'export-calibration'])
+    parser.add_argument('--calibration-file', type=Path, help='explicit saved source for a read-only calibration export')
     args = parser.parse_args()
+    require(args.calibration_file is None or args.mode == 'export-calibration', 'calibration file applies only to export-calibration')
     require(sys.platform == 'linux' and os.geteuid() == 0, 'Proxmox root required')
     runtime()
     if args.mode == 'event':
@@ -547,6 +658,8 @@ def main():
             os.close(fd)
         return
     c = load_config()
+    if args.mode == 'export-calibration':
+        print(json.dumps(calibration_export(c, args.calibration_file), indent=2)); return
     if args.mode == 'rules':
         print(rules(c), end=''); return
     fd = os.open(RUNTIME / 'lock', os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)

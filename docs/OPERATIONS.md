@@ -10,6 +10,18 @@ Stock CLI recovery has a finite reopen/rescan budget. A running process can exha
 
 The reference installation passed a real MA-server outage/restart with all seven existing player processes left running: they reconnected without configuration repair or player restart. Its normal music-announcement-resume flow also preserved the queue context and restored listening volume. These bounded results do not extend the separate USB/static-adapter recovery limits below.
 
+Optional [per-room idle gain](CONFIGURATION.md#optional-idle-hardware-gain) uses
+stock stream hooks and generated native drop-ins. Live speaker gains may
+intentionally differ from saved calibration while idle. Use the matching
+recovery code/map so returned hardware regains the current stream-owned policy;
+do not save attenuated live values over the host calibration. Generated active
+values must be refreshed from a new host export after calibration changes.
+For idle attenuation, the configured fixed host calibration file is separate
+from standard ALSA runtime autosave. Preserve it in the host backup and retain
+its `calibration_file` configuration even when disabling attenuation.
+Policy/code tests and a bounded hardware recovery check do not establish
+physical replug, all-room acoustic acceptance or sample-perfect stream onset.
+
 ## Private backup
 
 Before upgrades or migration, stop the players and take an access-controlled CT backup/snapshot through normal Proxmox facilities. Also retain:
