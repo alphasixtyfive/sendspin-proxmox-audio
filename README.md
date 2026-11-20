@@ -26,6 +26,9 @@ The installer uses the released [Sendspin CLI 0.4.0](https://github.com/Sendspin
 
 ## Keeping it running
 
+Use [Sendspin Settings](docs/SETTINGS.md) to edit zones in a browser and
+prepare the same native files as the command-line renderer.
+
 Players recover after unexpected exits. Audio-server recovery preserves running rooms; deliberate service stops stay effective. Optional [USB recovery](docs/USB-RECOVERY.md) recreates a returned physical output while keeping the room players connected, and prepares available device grants before host autostart. [Operations](docs/OPERATIONS.md) covers updates, manual recovery and rollback.
 
 The [validation record](docs/VALIDATION.md) says what was actually tested, including the remaining hardware and long-term limits. [Migration](docs/MIGRATION.md) covers replacing an older setup.

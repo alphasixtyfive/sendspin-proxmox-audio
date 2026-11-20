@@ -1,0 +1,23 @@
+[Unit]
+Description=Sendspin Settings
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+DynamicUser=yes
+StateDirectory=sendspin-settings
+StateDirectoryMode=0700
+WorkingDirectory=/opt/sendspin-settings
+Environment=SENDSPIN_BIND=127.0.0.1 SENDSPIN_CLIENT=127.0.0.1
+EnvironmentFile=-/etc/sendspin-settings/network.conf
+ExecStart=/usr/bin/python3 -B /opt/sendspin-settings/settings/sendspin_web.py --bind ${SENDSPIN_BIND} --client ${SENDSPIN_CLIENT} --config /var/lib/sendspin-settings/sendspin.toml --project /opt/sendspin-settings --stages /var/lib/sendspin-settings/stages
+Restart=always
+RestartSec=3s
+UMask=0077
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

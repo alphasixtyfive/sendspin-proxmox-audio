@@ -84,6 +84,9 @@ for path in root.rglob("*"):
     # This checker contains the forbidden marker strings it searches for below.
     if path.resolve() == Path(__file__).resolve() or path.name == ".gitignore":
         continue
+    if parts == ("settings", "inter-latin-v20.woff2"):
+        assert path.read_bytes().startswith(b"wOF2"), path
+        continue
     text = path.read_text(encoding="utf-8")
     if path.suffix == ".py":
         ast.parse(text, filename=str(path))

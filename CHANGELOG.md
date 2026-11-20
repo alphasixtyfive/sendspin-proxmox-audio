@@ -1,7 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.1.8 — 20 November 2026
 
+- Add Sendspin Settings for editing, adding and removing zones. Saving prepares
+  and verifies the installation files. The editor listens on loopback by default.
 - Reject malformed recovery maps and ambiguous paired stream status before
   changing hardware. Keep calibration selection explicit at the restore boundary,
   and separate generated hook text from staged files without changing native output.

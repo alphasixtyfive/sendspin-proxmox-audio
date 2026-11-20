@@ -1,0 +1,704 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sendspin Settings</title>
+<style>
+  @font-face {
+    font-family: Inter;
+    src: url("/inter-latin-v20.woff2") format("woff2");
+    font-weight: 400 700;
+    font-display: swap;
+  }
+  :root {
+    color-scheme: light dark;
+    --background: #f3f3f3;
+    --surface: #fff;
+    --text: #202020;
+    --muted: #5c5c5c;
+    --line: #d4d4d4;
+    --control-line: #858585;
+    --accent: #006787;
+    --accent-text: #fff;
+    --hover: #e9e9e9;
+    --danger: #a4262c;
+    --radius: 4px;
+    font: 100%/1.45 Inter, "Segoe UI", sans-serif;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --background: #202020;
+      --surface: #282828;
+      --text: #f1f1f1;
+      --muted: #b4b4b4;
+      --line: #414141;
+      --control-line: #727272;
+      --accent: #009ac7;
+      --accent-text: #171717;
+      --hover: #2e2e2e;
+      --danger: #ff99a4;
+    }
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  [hidden] {
+    display: none !important;
+  }
+
+  body {
+    margin: 0;
+    background: var(--background);
+    color: var(--text);
+  }
+
+  main {
+    max-width: 62rem;
+    margin: 0 auto;
+    padding: 1.75rem 1.25rem;
+  }
+
+  h1, h2, p {
+    margin: 0;
+  }
+
+  h1 {
+    font-size: 1.45rem;
+    font-weight: 650;
+    letter-spacing: -.025em;
+  }
+
+  h2 {
+    font-size: 1rem;
+    font-weight: 650;
+  }
+
+  small, .muted {
+    color: var(--muted);
+    font-size: .875rem;
+  }
+
+  .bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: .65rem;
+  }
+
+  header {
+    margin-bottom: 1.15rem;
+    padding-bottom: .9rem;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .layout {
+    display: grid;
+    grid-template-columns: minmax(14.5rem, 1fr) minmax(0, 2.65fr);
+    gap: 1.3rem;
+  }
+
+  nav {
+    display: grid;
+    gap: .125rem;
+    margin-top: .55rem;
+  }
+
+  button, input, select {
+    font: inherit;
+  }
+
+  button {
+    cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: default;
+    opacity: .55;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .zone, .button {
+    min-height: 2.5rem;
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--text);
+  }
+
+  .zone {
+    display: grid;
+    padding: .375rem .625rem;
+    border: 0;
+    border-inline-start: 2px solid transparent;
+    text-align: start;
+    overflow-wrap: anywhere;
+  }
+
+  .zone:hover:not(:disabled) {
+    background: var(--hover);
+  }
+
+  .zone[aria-current="true"] {
+    border-inline-start-color: var(--accent);
+    border-start-start-radius: 0;
+    border-end-start-radius: 0;
+  }
+
+  .zone strong {
+    font-weight: 600;
+  }
+
+  .editor {
+    min-width: 0;
+    padding-inline-start: 1.3rem;
+    border-inline-start: 1px solid var(--line);
+  }
+
+  form {
+    display: grid;
+    gap: .8rem;
+    margin-top: 1rem;
+  }
+
+  .field-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .8rem;
+  }
+
+  label {
+    display: grid;
+    gap: .3rem;
+    min-width: 0;
+    font-size: .875rem;
+    font-weight: 580;
+  }
+
+  input:not([type="checkbox"]), select {
+    width: 100%;
+    min-height: 2.5rem;
+    padding: .4rem .6rem;
+    border: 1px solid var(--control-line);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--text);
+  }
+
+  input::placeholder {
+    color: var(--muted);
+  }
+
+  .select-field {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: center;
+  }
+
+  .select-field select, .select-field::after {
+    grid-area: 1 / 1;
+  }
+
+  .select-field select {
+    appearance: none;
+    padding-inline-end: 2.25rem;
+  }
+
+  .select-field::after {
+    content: "";
+    justify-self: end;
+    width: .45rem;
+    height: .45rem;
+    margin-inline-end: 1rem;
+    border: solid var(--muted);
+    border-width: 0 1.5px 1.5px 0;
+    transform: translateY(-.125rem) rotate(45deg);
+    pointer-events: none;
+  }
+
+  .enabled {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    width: fit-content;
+    min-height: 2rem;
+  }
+
+  input[type="checkbox"] {
+    width: 1rem;
+    height: 1rem;
+    margin: 0;
+    accent-color: var(--accent);
+  }
+
+  .button {
+    padding: .35rem .7rem;
+    border: 1px solid var(--control-line);
+    font-weight: 580;
+  }
+
+  .button:hover:not(:disabled) {
+    border-color: var(--accent);
+  }
+
+  .primary {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--accent-text);
+  }
+
+  .primary:disabled {
+    border-color: var(--line);
+    background: var(--line);
+    color: var(--muted);
+    opacity: 1;
+  }
+
+  .danger, [data-error="true"] {
+    color: var(--danger);
+  }
+
+  .actions {
+    justify-content: flex-start;
+  }
+
+  #remove {
+    margin-inline-start: auto;
+  }
+
+  #message {
+    margin-top: .8rem;
+    overflow-wrap: anywhere;
+  }
+
+  #message:empty {
+    margin: 0;
+  }
+
+  .diagnostics, footer {
+    margin-top: 1.15rem;
+    border-top: 1px solid var(--line);
+  }
+
+  .diagnostics {
+    padding-top: 1rem;
+  }
+
+  .diagnostics h2 {
+    margin-bottom: .15rem;
+  }
+
+  #stage-result, #installation-info {
+    margin-top: .75rem;
+  }
+
+  #stage-path {
+    font-family: ui-monospace, monospace;
+    font-size: .8rem;
+  }
+
+  footer {
+    padding-top: .75rem;
+    text-align: end;
+  }
+
+  #versions, #port, #started {
+    font-variant-numeric: tabular-nums;
+  }
+
+  #versions a {
+    color: inherit;
+    text-underline-offset: .18em;
+  }
+
+  #versions a:hover {
+    color: var(--text);
+  }
+
+  dialog {
+    max-width: min(25rem, calc(100% - 2rem));
+    padding: 1.2rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--text);
+  }
+
+  dialog::backdrop {
+    background: #0007;
+  }
+
+  dialog p {
+    margin-top: .45rem;
+  }
+
+  dialog form {
+    display: flex;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: .5rem;
+  }
+
+  @media (max-width: 740px) {
+    main {
+      padding: 1rem;
+    }
+
+    .layout {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 1rem;
+    }
+
+    nav {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .editor {
+      padding: 1rem 0 0;
+      border-inline-start: 0;
+      border-top: 1px solid var(--line);
+    }
+
+    .button, .enabled, input:not([type="checkbox"]), select {
+      min-height: 2.75rem;
+    }
+  }
+
+  @media (max-width: 450px) {
+    .field-row {
+      grid-template-columns: minmax(0, 1fr);
+      gap: .55rem;
+    }
+  }
+
+  @media (forced-colors: active) {
+    .select-field select {
+      appearance: auto;
+      padding-inline-end: .6rem;
+    }
+
+    .select-field::after {
+      content: none;
+    }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header class="bar">
+    <h1>Sendspin Settings</h1>
+    <button id="add" class="button" type="button" disabled>Add zone</button>
+  </header>
+  <div class="layout">
+    <aside aria-labelledby="zones-heading">
+      <h2 id="zones-heading">Zones</h2>
+      <nav id="zones" aria-label="Zones"></nav>
+    </aside>
+
+    <section class="editor" aria-labelledby="selected">
+      <div class="bar">
+        <h2 id="selected">Zone settings</h2>
+        <small id="port"></small>
+      </div>
+      <form id="settings" hidden>
+        <div class="field-row">
+          <label>Zone name <input id="name" maxlength="128" required></label>
+          <label>Player name <input id="player" maxlength="128" placeholder="Same as zone name"></label>
+        </div>
+        <label>
+          Stereo output
+          <span class="select-field"><select id="output" required></select></span>
+        </label>
+        <label class="enabled"><input id="enabled" type="checkbox"> Enabled</label>
+        <div class="bar actions">
+          <button id="save" class="button primary" type="submit">Save</button>
+          <button id="cancel" class="button" type="button">Cancel</button>
+          <button id="remove" class="button danger" type="button">Remove zone</button>
+        </div>
+      </form>
+    </section>
+  </div>
+  <p class="muted" id="message" role="status">Loading settings…</p>
+  <button id="reload" class="button" type="button" hidden>Reload settings</button>
+  <section id="diagnostics" class="diagnostics" aria-labelledby="diagnostics-heading" hidden>
+    <div class="bar">
+      <div>
+        <h2 id="diagnostics-heading">Diagnostics</h2>
+        <p class="muted">Service started <time id="started"></time></p>
+      </div>
+      <button id="restart" class="button" type="button" hidden>Restart settings service</button>
+    </div>
+    <label id="stage-result" hidden>Installation folder <input id="stage-path" readonly></label>
+    <p id="installation-info" class="muted" hidden>Save to create the installation files.</p>
+  </section>
+  <footer>
+    <small id="versions">
+      <a id="cli-releases" href="https://github.com/Sendspin/sendspin-cpp-cli/releases" target="_blank" rel="noopener noreferrer">CLI releases</a>
+      <span aria-hidden="true">·</span>
+      <a id="core-releases" href="https://github.com/Sendspin/sendspin-cpp/releases" target="_blank" rel="noopener noreferrer">Core releases</a>
+    </small>
+  </footer>
+</main>
+
+<dialog id="remove-dialog" aria-labelledby="remove-heading">
+  <h2 id="remove-heading">Remove zone?</h2>
+  <p id="remove-text"></p>
+  <form method="dialog">
+    <button class="button" value="cancel" autofocus>Cancel</button>
+    <button class="button danger" value="remove">Remove zone</button>
+  </form>
+</dialog>
+
+<script>
+  const el = id => document.getElementById(id);
+  const form = el('settings');
+  const zoneList = el('zones');
+  const zoneName = el('name');
+  const playerName = el('player');
+  const output = el('output');
+  const enabled = el('enabled');
+  const fields = [zoneName, playerName, output, enabled];
+  const addButton = el('add');
+  const saveButton = el('save');
+  const cancelButton = el('cancel');
+  const removeButton = el('remove');
+  const reloadButton = el('reload');
+  const restartButton = el('restart');
+  const removeDialog = el('remove-dialog');
+  const message = el('message');
+
+  let settings;
+  let assignedOutputs;
+  let selectedZone;
+  let busy = false;
+
+  function feedback(text, error = false) {
+    message.textContent = text;
+    message.dataset.error = String(error);
+  }
+
+  function hasChanges() {
+    if (!settings) return false;
+    const zone = selectedZone;
+    return !zone || zoneName.value !== zone.name || playerName.value !== zone.player ||
+      output.value !== zone.socket || enabled.checked !== zone.enabled;
+  }
+
+  function updateControls() {
+    const dirty = hasChanges();
+    saveButton.disabled = busy || !settings || (!dirty && Boolean(settings.installation));
+    cancelButton.hidden = !dirty;
+    cancelButton.disabled = busy;
+    removeButton.hidden = !selectedZone;
+    removeButton.disabled = busy || dirty;
+    addButton.disabled = busy || !selectedZone || assignedOutputs.size === settings.outputs.length;
+    reloadButton.disabled = busy;
+    restartButton.disabled = busy || dirty;
+
+    const occupied = output.selectedOptions[0]?.disabled;
+    output.setCustomValidity(enabled.checked && occupied
+      ? 'Choose an available stereo output to enable this zone.'
+      : '');
+  }
+
+  function setBusy(value) {
+    busy = value;
+    for (const field of fields) field.disabled = value;
+    for (const button of zoneList.children) button.disabled = value;
+    updateControls();
+  }
+
+  function showZone(zone) {
+    selectedZone = zone;
+    for (const button of zoneList.children) {
+      if (button.dataset.zone === zone?.key) button.setAttribute('aria-current', 'true');
+      else button.removeAttribute('aria-current');
+    }
+
+    el('selected').textContent = zone?.name ?? 'New zone';
+    el('port').textContent = zone ? 'Port ' + zone.port : '';
+    output.replaceChildren(...settings.outputs.map(({value, label}) => {
+      const owner = assignedOutputs.get(value);
+      const taken = Boolean(owner && owner.key !== zone?.key);
+      const option = new Option(taken ? label + ' · ' + owner.name : label, value);
+      option.disabled = taken;
+      return option;
+    }));
+
+    const available = settings.outputs.find(item => !assignedOutputs.has(item.value));
+    output.value = zone?.socket ?? available?.value ?? '';
+    zoneName.value = zone?.name ?? '';
+    playerName.value = zone?.player ?? '';
+    enabled.checked = zone?.enabled ?? true;
+    form.hidden = false;
+    feedback('');
+    updateControls();
+  }
+
+  function makeZoneButton(zone) {
+    const button = document.createElement('button');
+    const name = document.createElement('strong');
+    const route = document.createElement('small');
+
+    button.type = 'button';
+    button.className = 'zone';
+    button.dataset.zone = zone.key;
+    name.textContent = zone.name;
+    route.textContent = zone.enabled ? zone.output : zone.output + ' · Disabled';
+    button.append(name, route);
+    button.addEventListener('click', () => {
+      if (zone !== selectedZone && discardChanges()) showZone(zone);
+    });
+    return button;
+  }
+
+  function showSettings(data, key) {
+    settings = data;
+    assignedOutputs = new Map(data.zones.filter(zone => zone.enabled).map(zone => [zone.socket, zone]));
+    zoneList.replaceChildren(...data.zones.map(makeZoneButton));
+
+    el('cli-releases').textContent = 'CLI ' + data.version;
+    el('core-releases').textContent = 'Core ' + data.library;
+    const started = el('started');
+    started.dateTime = data.started;
+    started.textContent = new Date(data.started).toLocaleString([], {
+      dateStyle: 'medium',
+      timeStyle: 'medium'
+    });
+
+    const installationReady = Boolean(data.installation);
+    el('stage-path').value = data.installation ?? '';
+    el('stage-result').hidden = !installationReady;
+    el('installation-info').hidden = installationReady;
+    el('diagnostics').hidden = false;
+    restartButton.hidden = !data.restart;
+    reloadButton.hidden = true;
+
+    showZone(data.zones.find(zone => zone.key === key) ?? data.zones[0]);
+  }
+
+  function discardChanges() {
+    return !hasChanges() || window.confirm('Discard the unsaved changes?');
+  }
+
+  async function request(path, data, timeout = 5000) {
+    const options = {signal: AbortSignal.timeout(timeout)};
+    if (data !== undefined) {
+      options.method = 'POST';
+      options.headers = {'Content-Type': 'application/json'};
+      options.body = JSON.stringify(data);
+    }
+    const response = await fetch(path, options);
+    const result = await response.json();
+    if (!response.ok) {
+      if (response.status === 409) reloadButton.hidden = false;
+      throw new Error(result.error || 'The request failed.');
+    }
+    return result;
+  }
+
+  async function perform(action) {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await action();
+    } catch (error) {
+      const timedOut = error.name === 'TimeoutError' || error.name === 'AbortError';
+      feedback(timedOut ? 'Request timed out. Reload settings to check the result.' : error.message, true);
+      if (!settings || timedOut) reloadButton.hidden = false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function loadSettings() {
+    return perform(async () => {
+      showSettings(await request('/api/config'), selectedZone?.key);
+    });
+  }
+
+  function restartService() {
+    return perform(async () => {
+      const previous = settings.started;
+      feedback('Restarting settings service…');
+      await request('/api/restart', {});
+      for (let attempt = 0; attempt < 12; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 750));
+        const data = await request('/api/config', undefined, 1000).catch(() => null);
+        if (data && data.started !== previous) {
+          showSettings(data, selectedZone?.key);
+          feedback('Settings service restarted.');
+          return;
+        }
+      }
+      reloadButton.hidden = false;
+      throw new Error('The settings service has not responded yet.');
+    });
+  }
+
+  function changeZone(path, changes, success) {
+    return perform(async () => {
+      const updated = await request(path, {
+        room: selectedZone?.key ?? null,
+        revision: settings.revision,
+        ...changes
+      });
+      showSettings(updated, updated.saved);
+      feedback(success);
+    });
+  }
+
+  addButton.addEventListener('click', () => {
+    if (!discardChanges()) return;
+    showZone();
+    zoneName.focus();
+  });
+
+  cancelButton.addEventListener('click', () => {
+    showZone(selectedZone ?? settings.zones[0]);
+  });
+
+  reloadButton.addEventListener('click', () => {
+    if (discardChanges()) loadSettings();
+  });
+
+  restartButton.addEventListener('click', restartService);
+
+  form.addEventListener('input', updateControls);
+  form.addEventListener('submit', event => {
+    event.preventDefault();
+    changeZone('/api/zone', {
+      name: zoneName.value,
+      player_name: playerName.value,
+      socket: output.value,
+      enabled: enabled.checked
+    }, 'Settings and installation files saved.');
+  });
+
+  removeButton.addEventListener('click', () => {
+    if (!selectedZone) return;
+    el('remove-text').textContent =
+      'Remove ' + selectedZone.name + ' from saved settings? Its pairing is kept.';
+    removeDialog.returnValue = 'cancel';
+    removeDialog.showModal();
+  });
+
+  removeDialog.addEventListener('close', () => {
+    if (removeDialog.returnValue === 'remove') {
+      changeZone('/api/zone/remove', {}, 'Zone removed and installation files updated.');
+    }
+  });
+
+  el('stage-path').addEventListener('focus', event => event.target.select());
+
+  loadSettings();
+</script>
+</body>
+</html>

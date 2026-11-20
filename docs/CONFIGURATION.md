@@ -2,6 +2,8 @@
 
 Edit a private copy of [audio.toml](../examples/audio.toml). It describes the MA endpoint, named USB devices and each room's socket. Python 3.11+ reads TOML without extra packages. The renderer is a command in this repository; it adds no service, web app or player modification.
 
+[Sendspin Settings](SETTINGS.md) is the optional browser editor for zone changes.
+
 ```sh
 mkdir -p local
 cp examples/audio.toml local/audio.toml
