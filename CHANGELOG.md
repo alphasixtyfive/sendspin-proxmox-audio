@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.9 — 22 November 2026
+
+- Start the USB event watcher during boot and keep recovery ordered after guest startup. This removes a systemd ordering cycle that could leave the watcher inactive after reboot.
+- Document optional amplifier shutdown before Proxmox stops guests, and show how to measure shutdown and room recovery separately.
+
 ## 0.1.8 — 20 November 2026
 
 - Add Sendspin Settings for editing, adding and removing zones. Saving prepares

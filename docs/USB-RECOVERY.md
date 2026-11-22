@@ -6,7 +6,7 @@ The existing Sendspin installer does not enable this optional component. It runs
 
 ## What happens
 
-The generated udev rule queues a short local event. A systemd path unit starts a bounded recovery operation outside the udev worker. Duplicate events for an unchanged USB/card generation do not restart audio. A file lock serializes changes; events arriving during an operation remain queued for the next pass. Six actual recovery attempts per minute are allowed; persistent flapping then stops with a journal error until another event after cooldown or an explicit reviewed recovery.
+The generated udev rule queues a short local event. A systemd path unit watches for events during boot, and the recovery service runs after Proxmox guest startup. Duplicate events for an unchanged USB/card generation do not restart audio. A file lock serializes changes; events arriving during an operation remain queued for the next pass. Six actual recovery attempts per minute are allowed; persistent flapping then stops with a journal error until another event after cooldown or an explicit reviewed recovery.
 
 Card identity is checked by physical USB port, VID/PID and the existing per-port ALSA ID. USB device number and ALSA sysfs instance distinguish a real reconnect from a repeated change event. Identical cards can swap reserved indices while keeping the same complete device permission set.
 
@@ -39,7 +39,7 @@ install -o root -g root -m 0644 systemd/host/sendspin-usb-prepare.service /etc/s
 /usr/local/libexec/sendspin-usb-recovery rules > /root/99-sendspin-usb-recovery.rules
 install -o root -g root -m 0644 /root/99-sendspin-usb-recovery.rules /etc/udev/rules.d/
 /usr/local/libexec/sendspin-usb-recovery check
-systemd-analyze verify /etc/systemd/system/sendspin-usb-recovery.service /etc/systemd/system/sendspin-usb-recovery.path /etc/systemd/system/sendspin-usb-prepare.service
+systemd-analyze verify multi-user.target /etc/systemd/system/sendspin-usb-recovery.service /etc/systemd/system/sendspin-usb-recovery.path /etc/systemd/system/sendspin-usb-prepare.service
 udevadm verify /etc/udev/rules.d/99-sendspin-usb-recovery.rules
 systemctl daemon-reload
 udevadm control --reload-rules
@@ -55,6 +55,12 @@ rm /etc/sendspin-usb-recovery.disabled
 systemctl enable --now sendspin-usb-recovery.path
 systemctl enable sendspin-usb-prepare.service
 ```
+
+If upgrading an existing recovery installation affected by the `paths.target`
+ordering cycle, replace only `sendspin-usb-recovery.path` with the reviewed file
+above. Verify the units, reload systemd and start the watcher if inactive.
+Check that it is enabled and active. The recovery service still runs after
+`pve-guests.service`. [systemd path ordering](https://www.freedesktop.org/software/systemd/man/latest/systemd.path.html)
 
 ## Maintenance and diagnosis
 

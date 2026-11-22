@@ -1,6 +1,5 @@
 [Unit]
 Description=Process queued Sendspin USB changes
-After=pve-guests.service
 ConditionPathExists=/etc/sendspin-usb-recovery.json
 
 [Path]

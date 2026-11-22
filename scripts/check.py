@@ -73,6 +73,11 @@ for daemon in ["pipewire", "wireplumber"]:
     dropin = root / f"systemd/{daemon}.service.d/50-direct-restart.conf"
     assert dropin.read_text() == "[Service]\nRestartMode=direct\n"
 
+# Path units precede paths.target; the triggered service waits for Proxmox.
+host_units = root / "systemd/host"
+assert "After=pve-guests.service" not in (host_units / "sendspin-usb-recovery.path").read_text()
+assert "After=pve-guests.service" in (host_units / "sendspin-usb-recovery.service").read_text().splitlines()
+
 for path in root.rglob("*"):
     parts = path.relative_to(root).parts
     if parts[0] in {".git", "local", "backups", "downloads", "build"} or "__pycache__" in parts:
